@@ -65,10 +65,13 @@ export default function AuthModal({ open, onClose, defaultMode = "login" }: Auth
       reset();
       onClose();
       navigate("/dashboard");
-    } catch (err: unknown) {
-      if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string } } };
-        setError(axiosErr.response?.data?.detail || "Login failed");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      const message = err?.message;
+      if (detail) {
+        setError(typeof detail === "string" ? detail : JSON.stringify(detail));
+      } else if (message) {
+        setError(`Network error: ${message}`);
       } else {
         setError("An unexpected error occurred");
       }
@@ -98,10 +101,13 @@ export default function AuthModal({ open, onClose, defaultMode = "login" }: Auth
       reset();
       onClose();
       navigate("/dashboard");
-    } catch (err: unknown) {
-      if (err && typeof err === "object" && "response" in err) {
-        const axiosErr = err as { response?: { data?: { detail?: string } } };
-        setError(axiosErr.response?.data?.detail || "Registration failed");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      const message = err?.message;
+      if (detail) {
+        setError(typeof detail === "string" ? detail : JSON.stringify(detail));
+      } else if (message) {
+        setError(`Network error: ${message}`);
       } else {
         setError("An unexpected error occurred");
       }
