@@ -126,7 +126,7 @@ export default function CrashPage() {
 
         {/* Controls */}
         <div className="space-y-4">
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Bet</h3>
             <div className="grid grid-cols-2 gap-2">
               {[1, 2, 5, 10, 25, 50].map(v => (
@@ -138,7 +138,7 @@ export default function CrashPage() {
             </div>
           </div>
 
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Auto Cash-out</h3>
             <div className="grid grid-cols-2 gap-2">
               {[1.5, 2, 3, 5, 10, 20].map(v => (
@@ -158,7 +158,7 @@ export default function CrashPage() {
           </motion.button>
 
           {history.length > 0 && (
-            <div className="card">
+            <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
               <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">History</h3>
               <div className="flex flex-wrap gap-1.5">
                 {history.map((h, i) => (

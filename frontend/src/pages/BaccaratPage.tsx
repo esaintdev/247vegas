@@ -119,7 +119,7 @@ export default function BaccaratPage() {
 
         {/* Side panel */}
         <div className="space-y-4">
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Bet Amount</h3>
             <div className="grid grid-cols-2 gap-2">
               {[5, 10, 25, 50, 100, 250].map(v => (
@@ -138,7 +138,7 @@ export default function BaccaratPage() {
           </motion.button>
 
           {history.length > 0 && (
-            <div className="card">
+            <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
               <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Recent</h3>
               <div className="flex flex-wrap gap-1.5">
                 {history.map((h, i) => (

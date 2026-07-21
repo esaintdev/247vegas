@@ -584,7 +584,7 @@ export default function RoulettePage() {
         {/* Right panel: Controls */}
         <div className="space-y-4">
           {/* Chip selector */}
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
               Chip Value
             </h3>
@@ -607,7 +607,7 @@ export default function RoulettePage() {
           </div>
 
           {/* Placed bets */}
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">
                 Your Bets ({bets.length})
@@ -717,7 +717,7 @@ export default function RoulettePage() {
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="card"
+                className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6"
               >
                 <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
                   Bet Results
@@ -775,7 +775,7 @@ export default function RoulettePage() {
       {/* Spin history */}
       {spinHistory.length > 0 && (
         <div className="mt-6">
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
               Spin History
             </h3>

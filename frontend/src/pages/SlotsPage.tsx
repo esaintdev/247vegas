@@ -303,7 +303,7 @@ export default function SlotsPage() {
         {/* Controls panel */}
         <div className="space-y-4">
           {/* Bet amount */}
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
               Bet Amount
             </h3>
@@ -325,7 +325,7 @@ export default function SlotsPage() {
           </div>
 
           {/* Paylines */}
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
               Paylines ({lines})
             </h3>
@@ -350,7 +350,7 @@ export default function SlotsPage() {
           </div>
 
           {/* Paytable */}
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
               Paytable (3x / 4x / 5x)
             </h3>
@@ -382,7 +382,7 @@ export default function SlotsPage() {
 
           {/* Recent wins */}
           {history.length > 0 && (
-            <div className="card">
+            <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
               <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
                 Recent Wins
               </h3>

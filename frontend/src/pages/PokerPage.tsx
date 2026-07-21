@@ -186,7 +186,7 @@ export default function PokerPage() {
 
         {/* Side panel */}
         <div className="space-y-4">
-          <div className="card">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Actions</h3>
             <div className="space-y-2">
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
@@ -205,7 +205,7 @@ export default function PokerPage() {
           </div>
 
           {history.length > 0 && (
-            <div className="card">
+            <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
               <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">History</h3>
               <div className="flex flex-wrap gap-1.5">
                 {history.map((h, i) => (
@@ -217,7 +217,7 @@ export default function PokerPage() {
             </div>
           )}
 
-          <div className="card text-xs text-gray-400">
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6 text-xs text-gray-400">
             <h4 className="mb-2 font-bold text-gray-300">📖 How to Play</h4>
             <ul className="space-y-1">
               <li>• Click <strong className="text-white">Deal</strong> to start ($10 ante)</li>
