@@ -66,7 +66,7 @@ export default function BlackjackPage() {
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [winModalOpen, setWinModalOpen] = useState(false);
   const [gameHistory, setGameHistory] = useState<
-    { outcome: string; amount: number }[]
+    { outcome: string; amount: number; payout: number; playerScore: number; dealerScore: number }[]
   >([]);
 
   const currentBet = gameState?.bet_amount ?? betAmount;
@@ -85,8 +85,8 @@ export default function BlackjackPage() {
         setShowResult(true);
         setLastMessage(data.message);
         setGameHistory((prev) => [
-          { outcome: data.outcome || "unknown", amount: data.bet_amount },
-          ...prev.slice(0, 9),
+          { outcome: data.outcome || "unknown", amount: Number(data.bet_amount), payout: Number(data.payout_amount || 0), playerScore: data.player_score, dealerScore: data.dealer_score },
+          ...prev.slice(0, 49),
         ]);
       }
       fetchWallet();
@@ -114,8 +114,8 @@ export default function BlackjackPage() {
           setShowResult(true);
           setLastMessage(data.message);
           setGameHistory((prev) => [
-            { outcome: data.outcome || "unknown", amount: data.bet_amount },
-            ...prev.slice(0, 9),
+            { outcome: data.outcome || "unknown", amount: Number(data.bet_amount), payout: Number(data.payout_amount || 0), playerScore: data.player_score, dealerScore: data.dealer_score },
+            ...prev.slice(0, 49),
           ]);
         }
         fetchWallet();
@@ -403,22 +403,45 @@ export default function BlackjackPage() {
 
         {/* Bottom row */}
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          {/* History */}
+          {/* Scoreboard */}
           {gameHistory.length > 0 && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               className="rounded-xl border border-white/[0.06] bg-[#161B22] px-5 py-4">
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Recent Hands</h3>
-              <div className="flex flex-wrap gap-2">
+              {/* Stats bar */}
+              <div className="mb-4 flex items-center gap-4 text-xs">
+                <span className="text-gray-500">Hands: <strong className="text-white">{gameHistory.length}</strong></span>
+                <span className="text-gray-500">Wins: <strong className="text-emerald-400">{gameHistory.filter(h => h.outcome === "win" || h.outcome === "blackjack" || h.outcome === "insurance_win").length}</strong></span>
+                <span className="text-gray-500">Losses: <strong className="text-red-400">{gameHistory.filter(h => h.outcome === "lose" || h.outcome === "bust").length}</strong></span>
+                <span className="text-gray-500">Pushes: <strong className="text-blue-400">{gameHistory.filter(h => h.outcome === "push").length}</strong></span>
+                <span className="text-gray-500">P&L: <strong className={(() => {
+                  const pnl = gameHistory.reduce((s, h) => s + h.payout - h.amount, 0);
+                  return pnl >= 0 ? "text-emerald-400" : "text-red-400";
+                })()}>${gameHistory.reduce((s, h) => s + h.payout - h.amount, 0).toFixed(2)}</strong></span>
+              </div>
+              {/* Table */}
+              <div className="max-h-[260px] overflow-y-auto space-y-1">
                 {gameHistory.map((h, i) => (
-                  <span key={i} className={`rounded-full px-3 py-1 text-xs font-medium ${
-                    h.outcome === "blackjack" ? "bg-amber-500/10 text-amber-400" :
-                    h.outcome === "win" ? "bg-emerald-500/10 text-emerald-400" :
-                    h.outcome === "push" ? "bg-blue-500/10 text-blue-400" :
-                    h.outcome === "insurance_win" ? "bg-yellow-500/10 text-yellow-400" :
-                    "bg-red-500/10 text-red-400"
-                  }`}>
-                    {h.outcome} (${h.amount})
-                  </span>
+                  <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }}
+                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs ${
+                      h.outcome === "blackjack" ? "bg-amber-500/8" :
+                      h.outcome === "win" ? "bg-emerald-500/8" :
+                      h.outcome === "push" ? "bg-blue-500/8" :
+                      h.outcome === "insurance_win" ? "bg-yellow-500/8" :
+                      "bg-red-500/5"
+                    }`}>
+                    <div className="flex items-center gap-3">
+                      <span className={`rounded-full px-2 py-0.5 font-medium ${
+                        h.outcome === "blackjack" ? "bg-amber-500/15 text-amber-400" :
+                        h.outcome === "win" ? "bg-emerald-500/15 text-emerald-400" :
+                        h.outcome === "push" ? "bg-blue-500/15 text-blue-400" :
+                        h.outcome === "insurance_win" ? "bg-yellow-500/15 text-yellow-400" :
+                        "bg-red-500/15 text-red-400"
+                      }`}>{h.outcome}</span>
+                      <span className="text-gray-500">Bet: <strong className="text-gray-300">${h.amount}</strong></span>
+                      <span className="text-gray-500">Payout: <strong className="text-white">${h.payout.toFixed(2)}</strong></span>
+                    </div>
+                    <span className="text-gray-500">You {h.playerScore} · Dealer {h.dealerScore}</span>
+                  </motion.div>
                 ))}
               </div>
             </motion.div>

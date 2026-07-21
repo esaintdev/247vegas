@@ -56,7 +56,7 @@ export default function PokerPage() {
   const [result, setResult] = useState<PokerResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAiCards, setShowAiCards] = useState(false);
-  const [history, setHistory] = useState<{ outcome: string; rank: string }[]>([]);
+  const [history, setHistory] = useState<{ outcome: string; rank: string; pot: string }[]>([]);
   const [winModalOpen, setWinModalOpen] = useState(false);
 
   const deal = useCallback(async () => {
@@ -78,7 +78,7 @@ export default function PokerPage() {
       setResult(data);
       if (data.is_finished) {
         if (data.outcome === "win") setWinModalOpen(true);
-        setHistory(prev => [{ outcome: data.outcome || "?", rank: data.player_rank || "?" }, ...prev.slice(0, 9)]);
+        setHistory(prev => [{ outcome: data.outcome || "?", rank: data.player_rank || "?", pot: data.pot || "0" }, ...prev.slice(0, 49)]);
       }
       fetchWallet();
     } catch { /* ignore */ }
@@ -92,7 +92,7 @@ export default function PokerPage() {
       const { data } = await apiClient.post<PokerResult>(`/poker/bet`, { action: "fold" });
       setResult(data);
       if (data.is_finished) {
-        setHistory(prev => [{ outcome: "fold", rank: "—" }, ...prev.slice(0, 9)]);
+        setHistory(prev => [{ outcome: "fold", rank: "—", pot: "0" }, ...prev.slice(0, 49)]);
       }
       fetchWallet();
     } catch { /* ignore */ }
@@ -210,16 +210,33 @@ export default function PokerPage() {
           </div>
 
           {history.length > 0 && (
-            <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
-              <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">History</h3>
-              <div className="flex flex-wrap gap-1.5">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
+              {/* Stats bar */}
+              <div className="mb-4 flex items-center gap-4 text-xs">
+                <span className="text-gray-400">Hands: <strong className="text-white">{history.length}</strong></span>
+                <span className="text-gray-400">Wins: <strong className="text-green-400">{history.filter(h => h.outcome === "win").length}</strong></span>
+                <span className="text-gray-400">Ties: <strong className="text-blue-400">{history.filter(h => h.outcome === "tie").length}</strong></span>
+                <span className="text-gray-400">Losses: <strong className="text-red-400">{history.filter(h => h.outcome !== "win" && h.outcome !== "tie").length}</strong></span>
+                <span className="text-gray-400">P&L: <strong className={(() => {
+                  const pnl = history.reduce((s, h) => s + (h.outcome === "win" ? Number(h.pot) - 10 : h.outcome === "tie" ? 0 : -10), 0);
+                  return pnl >= 0 ? "text-green-400" : "text-red-400";
+                })()}>${history.reduce((s, h) => s + (h.outcome === "win" ? Number(h.pot) - 10 : h.outcome === "tie" ? 0 : -10), 0).toFixed(2)}</strong></span>
+              </div>
+              {/* Table */}
+              <div className="max-h-[260px] overflow-y-auto space-y-1">
                 {history.map((h, i) => (
-                  <span key={i} className={`rounded-full px-2 py-0.5 text-xs font-medium ${h.outcome === "win" ? "bg-green-500/20 text-green-400" : h.outcome === "tie" ? "bg-blue-500/20 text-blue-400" : "bg-red-500/20 text-red-400"}`}>
-                    {h.outcome}
-                  </span>
+                  <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }}
+                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs ${h.outcome === "win" ? "bg-green-500/8" : h.outcome === "tie" ? "bg-blue-500/8" : "bg-red-500/5"}`}>
+                    <div className="flex items-center gap-3">
+                      <span className={`rounded-full px-2 py-0.5 font-medium ${h.outcome === "win" ? "bg-green-500/15 text-green-400" : h.outcome === "tie" ? "bg-blue-500/15 text-blue-400" : "bg-red-500/15 text-red-400"}`}>{h.outcome}</span>
+                      <span className="text-gray-500">Rank: <strong className="text-gray-300">{h.rank}</strong></span>
+                    </div>
+                    <span className={h.outcome === "win" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>{h.outcome === "win" ? `+$${h.pot}` : h.outcome === "tie" ? "$0" : `-$10`}</span>
+                  </motion.div>
                 ))}
               </div>
-            </div>
+            </motion.div>
           )}
 
           <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6 text-xs text-gray-400">

@@ -352,8 +352,12 @@ function CrashGraph({
       // Draw curve up to cashout point (or crash point if done without win)
       const finalMult = (cashoutMult && cashoutMult > 1) ? cashoutMult : crashAt;
       drawTime = timeForMult(finalMult);
+    } else if (gameState === "cashing_out") {
+      drawTime = timeForMult(cashoutMult && cashoutMult > 1 ? cashoutMult : currentMult);
     } else if (gameState === "crashing") {
       drawTime = timeForMult(crashAt);
+    } else if (gameState === "idle" || gameState === "betting") {
+      drawTime = 0; // explicit — just background, no curve
     }
 
     if (drawTime > 0) {
@@ -364,8 +368,11 @@ function CrashGraph({
 
     // Rocket at end of curve
     if (gameState === "running" || gameState === "cashing_out") {
+      const rocketTime = gameState === "cashing_out"
+        ? timeForMult(cashoutMult && cashoutMult > 1 ? cashoutMult : currentMult)
+        : drawTime;
       const endpoint = getCurveEndpoint(graphLeft, graphRight, graphTop, graphBottom,
-        drawTime, maxTime, maxMult);
+        rocketTime, maxTime, maxMult);
       drawRocket(ctx, endpoint.x, endpoint.y, endpoint.angle, 1.0);
     }
 
@@ -647,6 +654,7 @@ export default function CrashPage() {
         <div className="relative overflow-hidden rounded-2xl border border-gray-700/50 bg-gray-900/30 p-3" style={{ minHeight: 420 }}>
           <div className="h-[380px]">
             <CrashGraph
+              key={roundId || 'idle'}
               gameState={gameState}
               currentMult={currentMult}
               crashAt={crashAt}

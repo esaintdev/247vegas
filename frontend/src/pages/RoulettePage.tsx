@@ -335,7 +335,7 @@ export default function RoulettePage() {
   const [result, setResult] = useState<SpinResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [spinning, setSpinning] = useState(false);
-  const [spinHistory, setSpinHistory] = useState<number[]>([]);
+  const [spinHistory, setSpinHistory] = useState<{ number: number; color: string; totalBet: number; netResult: number; won: boolean }[]>([]);
   const [winModalOpen, setWinModalOpen] = useState(false);
   const [selectedChip, setSelectedChip] = useState(1);
 
@@ -400,7 +400,7 @@ export default function RoulettePage() {
       // Store result immediately (hidden behind wheel animation)
       setResult(data);
       if (data.won) setWinModalOpen(true);
-      setSpinHistory((prev) => [data.winning_number, ...prev.slice(0, 19)]);
+      setSpinHistory((prev) => [{ number: data.winning_number, color: data.winning_color, totalBet: parseFloat(data.total_bet), netResult: parseFloat(data.net_result), won: data.won }, ...prev.slice(0, 49)]);
       setBets([]);
 
       // Stop wheel animation after 2500ms
@@ -776,30 +776,43 @@ export default function RoulettePage() {
         </div>
       </div>
 
-      {/* Spin history */}
+      {/* Scoreboard */}
       {spinHistory.length > 0 && (
         <div className="mt-6">
-          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
-            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
-              Spin History
-            </h3>
-            <div className="flex flex-wrap gap-1.5">
-              {spinHistory.map((n, i) => (
-                <span
-                  key={i}
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold ${
-                    n === 0
-                      ? "bg-green-600 text-white"
-                      : RED_NUMBERS.has(n)
-                        ? "bg-red-600 text-white"
-                        : "bg-gray-900 text-gray-300"
-                  }`}
-                >
-                  {n}
-                </span>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
+            {/* Stats bar */}
+            <div className="mb-4 flex items-center gap-4 text-xs">
+              <span className="text-gray-400">Spins: <strong className="text-white">{spinHistory.length}</strong></span>
+              <span className="text-gray-400">Wins: <strong className="text-green-400">{spinHistory.filter(s => s.won).length}</strong></span>
+              <span className="text-gray-400">Losses: <strong className="text-red-400">{spinHistory.filter(s => !s.won).length}</strong></span>
+              <span className="text-gray-400">P&L: <strong className={(() => {
+                const pnl = spinHistory.reduce((s, h) => s + (h.won ? h.netResult : -h.totalBet), 0);
+                return pnl >= 0 ? "text-green-400" : "text-red-400";
+              })()}>${spinHistory.reduce((s, h) => s + (h.won ? h.netResult : -h.totalBet), 0).toFixed(2)}</strong></span>
+            </div>
+            {/* Table */}
+            <div className="max-h-[300px] overflow-y-auto space-y-1">
+              {spinHistory.map((s, i) => (
+                <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.015 }}
+                  className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs ${s.won ? "bg-green-500/8" : "bg-red-500/5"}`}>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${
+                        s.color === "green" ? "bg-green-600 text-white" :
+                        s.color === "red" ? "bg-red-600 text-white" : "bg-gray-900 text-gray-200"
+                      }`}
+                    >{s.number}</span>
+                    <span className={`font-medium capitalize ${s.color === "green" ? "text-green-400" : s.color === "red" ? "text-red-400" : "text-gray-300"}`}>{s.color}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-gray-500">Bet: <strong className="text-gray-300">${s.totalBet.toFixed(2)}</strong></span>
+                    <span className={s.won ? "text-green-400 font-medium" : "text-red-400 font-medium"}>{s.won ? `+$${s.netResult.toFixed(2)}` : `-$${s.totalBet.toFixed(2)}`}</span>
+                  </div>
+                </motion.div>
               ))}
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
 
