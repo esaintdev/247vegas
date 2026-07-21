@@ -53,16 +53,17 @@ const rankColors: Record<string, string> = {
 export default function PokerPage() {
   const navigate = useNavigate();
   const { wallet, fetchWallet } = useWalletStore();
+  const [betAmount, setBetAmount] = useState(10);
   const [result, setResult] = useState<PokerResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAiCards, setShowAiCards] = useState(false);
-  const [history, setHistory] = useState<{ outcome: string; rank: string; pot: string }[]>([]);
+  const [history, setHistory] = useState<{ outcome: string; rank: string; pot: string; bet: number }[]>([]);
   const [winModalOpen, setWinModalOpen] = useState(false);
 
   const deal = useCallback(async () => {
     setLoading(true); setResult(null); setShowAiCards(false); setWinModalOpen(false);
     try {
-      const { data } = await apiClient.post<PokerResult>("/poker/bet", { action: "deal" });
+      const { data } = await apiClient.post<PokerResult>("/poker/bet", { action: "deal", bet_amount: betAmount });
       setResult(data);
       if (data.is_finished && data.outcome === "win") setWinModalOpen(true);
       fetchWallet();
@@ -78,7 +79,7 @@ export default function PokerPage() {
       setResult(data);
       if (data.is_finished) {
         if (data.outcome === "win") setWinModalOpen(true);
-        setHistory(prev => [{ outcome: data.outcome || "?", rank: data.player_rank || "?", pot: data.pot || "0" }, ...prev.slice(0, 49)]);
+        setHistory(prev => [{ outcome: data.outcome || "?", rank: data.player_rank || "?", pot: data.pot || "0", bet: betAmount }, ...prev.slice(0, 49)]);
       }
       fetchWallet();
     } catch { /* ignore */ }
@@ -92,7 +93,7 @@ export default function PokerPage() {
       const { data } = await apiClient.post<PokerResult>(`/poker/bet`, { action: "fold" });
       setResult(data);
       if (data.is_finished) {
-        setHistory(prev => [{ outcome: "fold", rank: "—", pot: "0" }, ...prev.slice(0, 49)]);
+        setHistory(prev => [{ outcome: "fold", rank: "—", pot: "0", bet: betAmount }, ...prev.slice(0, 49)]);
       }
       fetchWallet();
     } catch { /* ignore */ }
@@ -192,12 +193,37 @@ export default function PokerPage() {
         {/* Side panel */}
         <div className="space-y-4">
           <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Bet Amount</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {[5, 10, 25, 50, 100].map(v => (
+                <button key={v} onClick={() => setBetAmount(v)}
+                  className={`rounded-lg border px-3 py-2 font-mono text-sm font-bold transition-all ${betAmount === v ? "border-casino-gold bg-casino-gold/10 text-casino-gold" : "border-casino-dark-border text-gray-400 hover:border-gray-600"}`}>
+                  ${v}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">$</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={betAmount}
+                  onChange={(e) => setBetAmount(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pl-8 pr-3 text-sm font-mono font-bold text-white outline-none transition-all focus:border-casino-gold focus:ring-1 focus:ring-casino-gold/40"
+                  placeholder="Custom amount"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Actions</h3>
             <div className="space-y-2">
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                onClick={deal} disabled={loading || (!!result && !result.is_finished)}
+                onClick={deal} disabled={loading || !wallet || parseFloat(wallet.available_balance) < betAmount || (!!result && !result.is_finished)}
                 className="btn-primary w-full py-3">
-                {loading ? "Dealing..." : "🃏 Deal Hand ($10)"}
+                {loading ? "Dealing..." : `🃏 Deal $${betAmount}`}
               </motion.button>
               {result?.is_finished && (
                 <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -219,9 +245,9 @@ export default function PokerPage() {
                 <span className="text-gray-400">Ties: <strong className="text-blue-400">{history.filter(h => h.outcome === "tie").length}</strong></span>
                 <span className="text-gray-400">Losses: <strong className="text-red-400">{history.filter(h => h.outcome !== "win" && h.outcome !== "tie").length}</strong></span>
                 <span className="text-gray-400">P&L: <strong className={(() => {
-                  const pnl = history.reduce((s, h) => s + (h.outcome === "win" ? Number(h.pot) - 10 : h.outcome === "tie" ? 0 : -10), 0);
+                  const pnl = history.reduce((s, h) => s + (h.outcome === "win" ? Number(h.pot) - h.bet : h.outcome === "tie" ? 0 : -h.bet), 0);
                   return pnl >= 0 ? "text-green-400" : "text-red-400";
-                })()}>${history.reduce((s, h) => s + (h.outcome === "win" ? Number(h.pot) - 10 : h.outcome === "tie" ? 0 : -10), 0).toFixed(2)}</strong></span>
+                })()}>${history.reduce((s, h) => s + (h.outcome === "win" ? Number(h.pot) - h.bet : h.outcome === "tie" ? 0 : -h.bet), 0).toFixed(2)}</strong></span>
               </div>
               {/* Table */}
               <div className="max-h-[260px] overflow-y-auto space-y-1">
@@ -232,7 +258,7 @@ export default function PokerPage() {
                       <span className={`rounded-full px-2 py-0.5 font-medium ${h.outcome === "win" ? "bg-green-500/15 text-green-400" : h.outcome === "tie" ? "bg-blue-500/15 text-blue-400" : "bg-red-500/15 text-red-400"}`}>{h.outcome}</span>
                       <span className="text-gray-500">Rank: <strong className="text-gray-300">{h.rank}</strong></span>
                     </div>
-                    <span className={h.outcome === "win" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>{h.outcome === "win" ? `+$${h.pot}` : h.outcome === "tie" ? "$0" : `-$10`}</span>
+                    <span className={h.outcome === "win" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>{h.outcome === "win" ? `+$${h.pot}` : h.outcome === "tie" ? "$0" : `-$${h.bet}`}</span>
                   </motion.div>
                 ))}
               </div>

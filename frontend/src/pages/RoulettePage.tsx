@@ -338,6 +338,7 @@ export default function RoulettePage() {
   const [spinHistory, setSpinHistory] = useState<{ number: number; color: string; totalBet: number; netResult: number; won: boolean }[]>([]);
   const [winModalOpen, setWinModalOpen] = useState(false);
   const [selectedChip, setSelectedChip] = useState(1);
+  const [customChipValue, setCustomChipValue] = useState<number | null>(null);
 
   const totalBet = bets.reduce((sum, b) => sum + b.amount, 0);
 
@@ -345,6 +346,7 @@ export default function RoulettePage() {
   const placeBet = useCallback(
     (type: string, numbers: number[], label: string) => {
       if (isLoading || spinning) return;
+      const amt = customChipValue ?? CHIP_VALUES[selectedChip];
 
       // Check if we already have this exact bet — increase amount instead
       const existing = bets.find(
@@ -354,7 +356,7 @@ export default function RoulettePage() {
         setBets((prev) =>
           prev.map((b) =>
             b.id === existing.id
-              ? { ...b, amount: b.amount + CHIP_VALUES[selectedChip] }
+              ? { ...b, amount: b.amount + amt }
               : b,
           ),
         );
@@ -366,13 +368,13 @@ export default function RoulettePage() {
         {
           id: `${type}-${numbers.join("-")}-${Date.now()}`,
           type,
-          amount: CHIP_VALUES[selectedChip],
+          amount: amt,
           numbers,
           label,
         },
       ]);
     },
-    [isLoading, spinning, bets, selectedChip],
+    [isLoading, spinning, bets, selectedChip, customChipValue],
   );
 
   const removeBet = (id: string) => {
@@ -607,6 +609,34 @@ export default function RoulettePage() {
                   ${val}
                 </button>
               ))}
+            </div>
+            {/* Custom chip value */}
+            <div className="mt-3">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">$</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={customChipValue ?? CHIP_VALUES[selectedChip]}
+                  onChange={(e) => {
+                    const val = Math.max(1, parseInt(e.target.value) || 1);
+                    const idx = CHIP_VALUES.findIndex(v => v === val);
+                    if (idx >= 0) {
+                      // Matches a preset chip — switch to it
+                      setSelectedChip(idx);
+                      setCustomChipValue(null);
+                    } else {
+                      // Custom value — store it
+                      setCustomChipValue(val);
+                    }
+                  }}
+                  className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pl-8 pr-3 text-sm font-mono font-bold text-white outline-none transition-all focus:border-casino-gold focus:ring-1 focus:ring-casino-gold/40"
+                  placeholder="Custom"
+                />
+              </div>
+              {customChipValue !== null && (
+                <p className="mt-1 text-[10px] text-amber-400">🔸 Custom chip: ${customChipValue}</p>
+              )}
             </div>
           </div>
 

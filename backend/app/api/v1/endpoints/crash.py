@@ -86,7 +86,7 @@ async def crash_bet(
 
     data = result.outcome_data
 
-    game_round.status = RoundStatus.PENDING
+    game_round.status = RoundStatus.PLAYING
     game_round.outcome_data = str(data)
     await session.flush()
 
