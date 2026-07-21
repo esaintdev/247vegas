@@ -8,5 +8,8 @@
       "root": "backend",
       "framework": "fastapi"
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
