@@ -11,7 +11,11 @@ from pydantic import BaseModel, Field
 class CrashBetRequest(BaseModel):
     """Place a bet on a crash round."""
     bet_amount: Decimal = Field(..., gt=0, decimal_places=2)
-    cash_out_at: Optional[float] = Field(None, gt=1.0, description="Auto cash-out at this multiplier")
+
+
+class CrashCashoutRequest(BaseModel):
+    """Cash out at a specific multiplier."""
+    multiplier: float = Field(..., gt=1.0, description="Current multiplier to cash out at")
 
 
 class CrashRoundResponse(BaseModel):
@@ -19,7 +23,7 @@ class CrashRoundResponse(BaseModel):
     round_id: str
     game_type: str = "crash"
     outcome: str
-    crash_multiplier: float
+    crash_multiplier: float  # The crash point; frontend uses for animation timing
     cash_out_at: Optional[float] = None
     final_multiplier: float
     elapsed_seconds: float
