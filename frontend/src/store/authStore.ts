@@ -19,6 +19,11 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
 
+  isAuthModalOpen: boolean;
+  authModalMode: "login" | "register";
+  openAuthModal: (mode: "login" | "register") => void;
+  closeAuthModal: () => void;
+
   setAuth: (user: User, accessToken: string, refreshToken: string) => void;
   setUser: (user: User) => void;
   logout: () => void;
@@ -33,6 +38,11 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       isAuthenticated: false,
       isLoading: true,
+
+      isAuthModalOpen: false,
+      authModalMode: "login",
+      openAuthModal: (mode) => set({ isAuthModalOpen: true, authModalMode: mode }),
+      closeAuthModal: () => set({ isAuthModalOpen: false }),
 
       setAuth: (user, accessToken, refreshToken) => {
         localStorage.setItem("access_token", accessToken);

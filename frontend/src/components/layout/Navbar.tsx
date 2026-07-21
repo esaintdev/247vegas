@@ -5,11 +5,17 @@ import { useEffect, useState } from "react";
 import AuthModal from "@/components/auth/AuthModal";
 
 export default function Navbar() {
-  const { isAuthenticated, user, logout } = useAuthStore();
+  const { 
+    isAuthenticated, 
+    user, 
+    logout, 
+    isAuthModalOpen, 
+    authModalMode, 
+    openAuthModal, 
+    closeAuthModal 
+  } = useAuthStore();
   const { wallet, fetchWallet } = useWalletStore();
   const navigate = useNavigate();
-  const [showAuth, setShowAuth] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [showMenu, setShowMenu] = useState(false);
 
   useEffect(() => {
@@ -57,13 +63,13 @@ export default function Navbar() {
           ) : (
             <div className="flex items-center gap-2 md:gap-4">
               <button
-                onClick={() => { setAuthMode("login"); setShowAuth(true); }}
+                onClick={() => openAuthModal("login")}
                 className="rounded-full px-3 md:px-5 py-1.5 md:py-2 text-xs md:text-sm font-bold text-white transition-all duration-75 active:translate-y-[4px]"
               >
                 Login
               </button>
               <button
-                onClick={() => { setAuthMode("register"); setShowAuth(true); }}
+                onClick={() => openAuthModal("register")}
                 className="rounded-full border-b-[4px] border-teal-700 bg-teal-400 px-3 md:px-5 py-1.5 md:py-2 text-xs md:text-sm font-bold text-[#2A095F] transition-all duration-75 active:translate-y-[4px] active:border-b-0"
               >
                 Sign up
@@ -151,7 +157,7 @@ export default function Navbar() {
           </button>
         </div>
       </div>
-      <AuthModal open={showAuth} onClose={() => setShowAuth(false)} defaultMode={authMode} />
+      <AuthModal open={isAuthModalOpen} onClose={closeAuthModal} defaultMode={authModalMode} />
     </nav>
   );
 }

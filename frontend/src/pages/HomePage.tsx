@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useEffect, useRef } from "react";
 import GameCard from "@/components/games/GameCard";
 import SEO from "@/components/seo/SEO";
+import { useAuthStore } from "@/store/authStore";
 
 // ─── Hero background: Unsplash casino/poker atmosphere ───────────────────────
 const HERO_IMAGE =
@@ -75,6 +76,7 @@ const floatingItems = [
 
 export default function HomePage() {
   const heroRef = useRef<HTMLElement>(null);
+  const { isAuthenticated, openAuthModal } = useAuthStore();
 
   // Subtle parallax on scroll
   useEffect(() => {
@@ -163,12 +165,21 @@ export default function HomePage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.45 }}
           >
-            <Link
-              to="/register"
-              className="inline-block rounded-full border-b-[4px] border-teal-700 bg-teal-400 px-9 py-4 text-base font-bold text-black transition-all duration-75 active:translate-y-[4px] active:border-b-0"
-            >
-              🎰 Start Playing Free
-            </Link>
+            {isAuthenticated ? (
+              <Link
+                to="/games"
+                className="inline-block rounded-full border-b-[4px] border-teal-700 bg-teal-400 px-9 py-4 text-base font-bold text-black transition-all duration-75 active:translate-y-[4px] active:border-b-0"
+              >
+                🎰 Start Playing Free
+              </Link>
+            ) : (
+              <button
+                onClick={() => openAuthModal("register")}
+                className="inline-block rounded-full border-b-[4px] border-teal-700 bg-teal-400 px-9 py-4 text-base font-bold text-black transition-all duration-75 active:translate-y-[4px] active:border-b-0"
+              >
+                🎰 Start Playing Free
+              </button>
+            )}
             <Link
               to="/games"
               className="inline-block rounded-full border-b-[4px] border-white/40 bg-white px-9 py-4 text-base font-bold text-black transition-all duration-75 active:translate-y-[4px] active:border-b-0"
