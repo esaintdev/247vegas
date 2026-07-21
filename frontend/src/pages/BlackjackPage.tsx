@@ -16,7 +16,7 @@ interface CardData {
 interface GameState {
   round_id: string;
   game_type: string;
-  player_cards: CardData[];
+  player_cards: CardData[] | CardData[][];
   dealer_cards: CardData[];
   player_score: number;
   dealer_score: number;
@@ -31,10 +31,29 @@ interface GameState {
   can_split: boolean;
   can_double: boolean;
   insurance_offered: boolean;
+  insurance_active: boolean;
+  has_split: boolean;
+  hand_count: number;
+  active_hand: number;
   message: string | null;
 }
 
 const QUICK_BETS = [10, 25, 50, 100];
+
+// ── Helper: normalize player_cards ──────────────────────────────────
+
+function getPlayerHands(state: GameState): CardData[][] {
+  const cards = state.player_cards;
+  if (!cards) return [];
+  if (Array.isArray(cards) && cards.length > 0 && !("suit" in cards[0])) {
+    // Already a list of hands
+    return cards as CardData[][];
+  }
+  // Single hand (flat list)
+  return [cards as CardData[]];
+}
+
+// ── Main Component ──────────────────────────────────────────────────
 
 export default function BlackjackPage() {
   const navigate = useNavigate();
@@ -80,7 +99,7 @@ export default function BlackjackPage() {
   }, [betAmount, fetchWallet]);
 
   const gameAction = useCallback(
-    async (action: "hit" | "stand" | "double") => {
+    async (action: "hit" | "stand" | "double" | "split" | "insurance") => {
       if (!gameState?.round_id) return;
       setIsLoading(true);
       setLastMessage(null);
@@ -121,6 +140,7 @@ export default function BlackjackPage() {
 
   const canAct = gameState && !gameState.is_finished && !isLoading;
   const hasBet = gameState !== null;
+  const hands = gameState ? getPlayerHands(gameState) : [];
 
   return (
     <div className="min-h-screen bg-[#0D1117] px-4 py-6 sm:px-6 lg:px-8">
@@ -159,6 +179,36 @@ export default function BlackjackPage() {
               }}
             />
 
+            {/* Insurance Indicator */}
+            {gameState?.insurance_offered && !gameState.insurance_active && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 rounded-xl bg-amber-500/15 border border-amber-500/30 p-3 text-center"
+              >
+                <p className="text-sm font-medium text-amber-400 mb-2">
+                  🛡️ Dealer showing Ace — Insurance offered (${(currentBet / 2).toFixed(2)})
+                </p>
+                <div className="flex justify-center gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                    onClick={() => gameAction("insurance")} disabled={isLoading}
+                    className="rounded-lg bg-amber-500 px-5 py-2 text-sm font-bold text-black transition-all hover:bg-amber-400 disabled:opacity-50"
+                  >
+                    Take Insurance
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                    onClick={() => setGameState(prev => prev ? { ...prev, insurance_offered: false } : prev)}
+                    disabled={isLoading}
+                    className="rounded-lg bg-gray-700 px-5 py-2 text-sm font-medium text-gray-300 transition-all hover:bg-gray-600 disabled:opacity-50"
+                  >
+                    Decline
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
+
             {/* Dealer */}
             <div className="relative mb-8">
               <div className="mb-3 flex items-center gap-2">
@@ -188,33 +238,48 @@ export default function BlackjackPage() {
 
             <div className="mb-8 border-t border-white/10" />
 
-            {/* Player */}
-            <div className="relative mb-6">
-              <div className="mb-3 flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-white/60">Your Hand</span>
-                {gameState && (
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                    gameState.player_busted ? "bg-red-500/20 text-red-300" :
-                    gameState.player_blackjack && gameState.is_finished ? "bg-amber-500/20 text-amber-400" :
-                    "bg-white/10 text-white/70"
-                  }`}>
-                    {gameState.player_busted ? "BUST" : gameState.player_score || ""}
+            {/* Player Hands */}
+            {hands.map((handCards, handIdx) => (
+              <div key={handIdx} className="relative mb-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                    {gameState?.has_split ? `Hand ${handIdx + 1}` : "Your Hand"}
+                    {gameState?.has_split && handIdx === gameState?.active_hand && !gameState?.is_finished && (
+                      <span className="ml-2 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400">● Active</span>
+                    )}
                   </span>
-                )}
-              </div>
-              <div className="flex min-h-[100px] flex-wrap items-center gap-3">
-                {gameState ? (
-                  gameState.player_cards.map((card, i) => (
+                  {/* Score badge */}
+                  {(() => {
+                    const score = handCards.reduce((sum, c) => {
+                      if (!c.face_up || c.rank === "?") return sum;
+                      if (["J", "Q", "K"].includes(c.rank)) return sum + 10;
+                      if (c.rank === "A") return sum + 11;
+                      return sum + parseInt(c.rank);
+                    }, 0);
+                    return (
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                        score > 21 ? "bg-red-500/20 text-red-300" : "bg-white/10 text-white/70"
+                      }`}>
+                        {score > 21 ? "BUST" : score || ""}
+                      </span>
+                    );
+                  })()}
+                </div>
+                <div className="flex min-h-[80px] flex-wrap items-center gap-2">
+                  {handCards.map((card, i) => (
                     <PlayingCard key={i} card={card} index={i} />
-                  ))
-                ) : (
-                  <div className="flex items-center gap-3 opacity-30">
-                    <span className="text-2xl">🃏</span>
-                    <p className="text-sm text-white/40">Place a bet to start playing</p>
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
-            </div>
+            ))}
+
+            {/* Empty state */}
+            {!gameState && (
+              <div className="mb-6 flex items-center gap-3 opacity-30">
+                <span className="text-2xl">🃏</span>
+                <p className="text-sm text-white/40">Place a bet to start playing</p>
+              </div>
+            )}
 
             {/* Messages */}
             <AnimatePresence>
@@ -283,23 +348,46 @@ export default function BlackjackPage() {
                   <div className="flex flex-wrap justify-center gap-3">
                     <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                       onClick={() => gameAction("hit")} disabled={!canAct}
-                      className="rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-8 py-3 font-bold text-white shadow-lg shadow-emerald-900/30 transition-all hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50">
-                      Hit
+                      className={`rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-8 py-3 font-bold text-white shadow-lg shadow-emerald-900/30 transition-all hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 ${
+                        gameState?.has_split ? "border-2 border-emerald-400/30" : ""
+                      }`}>
+                      Hit {gameState?.has_split && `(Hand ${(gameState?.active_hand ?? 0) + 1})`}
                     </motion.button>
                     <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                       onClick={() => gameAction("stand")} disabled={!canAct}
                       className="rounded-xl bg-gradient-to-r from-red-500 to-red-600 px-8 py-3 font-bold text-white shadow-lg shadow-red-900/30 transition-all hover:from-red-400 hover:to-red-500 disabled:opacity-50">
-                      Stand
+                      Stand {gameState?.has_split ? `(Hand ${(gameState?.active_hand ?? 0) + 1})` : ""}
                     </motion.button>
-                    {gameState?.can_double && (
+                    {gameState?.can_double && !gameState?.has_split && (
                       <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                         onClick={() => gameAction("double")} disabled={!canAct}
                         className="rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-8 py-3 font-bold text-black shadow-lg shadow-amber-500/30 transition-all hover:from-yellow-300 hover:to-amber-400 disabled:opacity-50">
                         Double (${currentBet * 2})
                       </motion.button>
                     )}
+                    {gameState?.can_split && (
+                      <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                        onClick={() => gameAction("split")} disabled={!canAct}
+                        className="rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 px-8 py-3 font-bold text-white shadow-lg shadow-purple-900/30 transition-all hover:from-purple-400 hover:to-purple-500 disabled:opacity-50">
+                        ✂️ Split
+                      </motion.button>
+                    )}
                   </div>
                 )}
+
+                {/* Show hand summary when multiple hands */}
+                {gameState?.has_split && !gameState.is_finished && (
+                  <div className="text-center text-xs text-white/40">
+                    {hands.map((_, i) => (
+                      <span key={i} className={`mx-1 ${
+                        i === gameState.active_hand ? "font-bold text-emerald-400" : "text-white/30"
+                      }`}>
+                        Hand {i + 1}{i < hands.length - 1 ? " · " : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {gameState?.is_finished && (
                   <motion.button initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                     whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
@@ -326,6 +414,7 @@ export default function BlackjackPage() {
                     h.outcome === "blackjack" ? "bg-amber-500/10 text-amber-400" :
                     h.outcome === "win" ? "bg-emerald-500/10 text-emerald-400" :
                     h.outcome === "push" ? "bg-blue-500/10 text-blue-400" :
+                    h.outcome === "insurance_win" ? "bg-yellow-500/10 text-yellow-400" :
                     "bg-red-500/10 text-red-400"
                   }`}>
                     {h.outcome} (${h.amount})
@@ -343,8 +432,9 @@ export default function BlackjackPage() {
               <ul className="space-y-1.5 text-sm text-gray-400">
                 <li>• Blackjack pays <span className="font-medium text-amber-400">3:2</span></li>
                 <li>• Dealer stands on <span className="font-medium text-white">17</span></li>
-                <li>• Split and double down available</li>
-                <li>• Insurance offered when dealer shows Ace</li>
+                <li>• <span className="font-medium text-purple-400">Split</span> pairs into two hands</li>
+                <li>• <span className="font-medium text-amber-400">Insurance</span> offered when dealer shows Ace</li>
+                <li>• Double down available on first two cards</li>
               </ul>
             </motion.div>
           )}

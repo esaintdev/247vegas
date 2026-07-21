@@ -45,4 +45,8 @@ class BlackjackRoundResponse(BaseModel):
     can_split: bool = False
     can_double: bool = False
     insurance_offered: bool = False
+    insurance_active: bool = False
+    has_split: bool = False
+    hand_count: int = 1
+    active_hand: int = 0
     message: Optional[str] = None

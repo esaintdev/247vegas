@@ -235,76 +235,185 @@ class BlackjackEngine(BaseGameEngine):
         dealer_hand.add_card(self.deck.draw(face_up=False))  # Hole card
 
         round_id = game_data.get("round_id", "")
-        game_state = {
+        game_state: Dict[str, Any] = {
             "round_id": round_id,
-            "player_hand": player_hand,
+            "player_hands": [player_hand],
             "dealer_hand": dealer_hand,
-            "bet_amount": bet_amount,
+            "hand_bets": [bet_amount],
+            "active_hand": 0,
             "is_finished": False,
             "insurance_offered": dealer_hand.cards[0].rank == "A",
-            "insurance_taken": False,
+            "insurance_bet": Decimal("0"),
+            "has_split": False,
         }
 
         self._games[round_id] = game_state
 
         # Check for natural blackjack
-        if player_hand.is_blackjack and not dealer_hand.is_blackjack:
-            # Player blackjack — reveal dealer hole card, pay 3:2
-            dealer_hand.cards[1].face_up = True
-            result = self._end_hand(round_id)
-            return result
-
-        if dealer_hand.is_blackjack and not player_hand.is_blackjack:
-            # Dealer blackjack — reveal hole card
-            dealer_hand.cards[1].face_up = True
-            result = self._end_hand(round_id)
-            return result
-
-        if dealer_hand.is_blackjack and player_hand.is_blackjack:
+        if player_hand.is_blackjack and dealer_hand.is_blackjack:
             # Both blackjack — push
             dealer_hand.cards[1].face_up = True
-            result = self._end_hand(round_id)
-            return result
+            return self._end_hand(round_id)
 
-        return self._build_result(round_id)
+        if player_hand.is_blackjack:
+            # Player blackjack — reveal dealer hole card, pay 3:2
+            dealer_hand.cards[1].face_up = True
+            return self._end_hand(round_id)
 
-    async def hit(self, round_id: str) -> GameResult:
-        """Player takes another card."""
-        game = self._get_game(round_id)
-        if game["is_finished"]:
-            raise ValueError("Hand is already finished")
-
-        player_hand: Hand = game["player_hand"]
-        player_hand.add_card(self.deck.draw())
-
-        if player_hand.is_busted:
+        if dealer_hand.is_blackjack:
+            # Dealer blackjack — reveal hole card
+            dealer_hand.cards[1].face_up = True
             return self._end_hand(round_id)
 
         return self._build_result(round_id)
 
-    async def stand(self, round_id: str) -> GameResult:
-        """Player stands — dealer plays."""
-        return self._end_hand(round_id)
+    # ── Actions ────────────────────────────────────────────────────────
 
-    async def double_down(self, round_id: str) -> GameResult:
-        """Double the bet, take one card, and stand."""
+    async def insurance(self, round_id: str) -> GameResult:
+        """Take insurance (costs half the bet)."""
+        game = self._get_game(round_id)
+        if not game["insurance_offered"]:
+            raise ValueError("Insurance not offered")
+        if game["insurance_bet"] > 0:
+            raise ValueError("Insurance already taken")
+
+        insurance_cost = game["hand_bets"][0] / 2
+        game["insurance_bet"] = insurance_cost
+        game["insurance_offered"] = False
+
+        # Reveal dealer hole card to check for blackjack
+        dealer_hand: Hand = game["dealer_hand"]
+        dealer_hand.cards[1].face_up = True
+
+        if dealer_hand.is_blackjack:
+            # Insurance pays 2:1 — also push on main bet
+            ins_payout = insurance_cost * 3  # Stake back + 2:1 win
+            # Main bet pushes
+            self._games.pop(round_id, None)
+            return GameResult(
+                round_id=round_id,
+                game_type="blackjack",
+                bet_amount=game["hand_bets"][0] + insurance_cost,
+                payout_amount=ins_payout,
+                won=True,
+                outcome_data={
+                    "outcome": "insurance_win",
+                    "player_cards": [game["player_hands"][0].to_dict()],
+                    "dealer_cards": dealer_hand.to_dict(),
+                    "player_score": game["player_hands"][0].best_value,
+                    "dealer_score": dealer_hand.best_value,
+                    "player_busted": False,
+                    "dealer_busted": False,
+                    "player_blackjack": game["player_hands"][0].is_blackjack,
+                    "can_split": False,
+                    "can_double": False,
+                    "insurance_offered": False,
+                    "insurance_active": False,
+                    "insurance_result": "won",
+                    "is_finished": True,
+                },
+            )
+        else:
+            # Insurance lost, round continues (hole card re-hidden in build_result)
+            dealer_hand.cards[1].face_up = False
+            return self._build_result(round_id)
+
+    async def split(self, round_id: str) -> GameResult:
+        """Split a pair into two hands."""
+        game = self._get_game(round_id)
+        hand = game["player_hands"][0]
+        if not hand.can_split:
+            raise ValueError("Cannot split")
+        if game["has_split"]:
+            raise ValueError("Already split")
+
+        # Split into two hands
+        hand1 = Hand()
+        hand2 = Hand()
+        hand1.add_card(hand.cards[0])
+        hand2.add_card(hand.cards[1])
+        del hand
+
+        # Deal one additional card to each hand
+        hand1.add_card(self.deck.draw())
+        hand2.add_card(self.deck.draw())
+
+        # If splitting aces, each hand gets only one card
+        is_aces = hand1.cards[0].rank == "A"
+
+        bet = game["hand_bets"][0]
+        game["player_hands"] = [hand1, hand2]
+        game["hand_bets"] = [bet, bet]
+        game["has_split"] = True
+        game["active_hand"] = 0
+
+        # For split aces, hands are immediately resolved
+        if is_aces:
+            return self._end_hand(round_id)
+
+        return self._build_result(round_id)
+
+    async def hit(self, round_id: str) -> GameResult:
+        """Player takes another card on the active hand."""
         game = self._get_game(round_id)
         if game["is_finished"]:
             raise ValueError("Hand is already finished")
 
-        player_hand: Hand = game["player_hand"]
-        if not player_hand.can_double:
+        hand_idx = game["active_hand"]
+        hand: Hand = game["player_hands"][hand_idx]
+        hand.add_card(self.deck.draw())
+
+        if hand.is_busted or hand.best_value == 21:
+            # Move to next hand or end
+            return self._advance_or_end(round_id)
+
+        return self._build_result(round_id)
+
+    async def stand(self, round_id: str) -> GameResult:
+        """Player stands on the active hand."""
+        game = self._get_game(round_id)
+        if game["is_finished"]:
+            raise ValueError("Hand is already finished")
+
+        return self._advance_or_end(round_id)
+
+    async def double_down(self, round_id: str) -> GameResult:
+        """Double the bet on the active hand, take one card, and stand."""
+        game = self._get_game(round_id)
+        if game["is_finished"]:
+            raise ValueError("Hand is already finished")
+
+        hand_idx = game["active_hand"]
+        hand: Hand = game["player_hands"][hand_idx]
+        if not hand.can_double:
             raise ValueError("Cannot double down now")
 
-        game["bet_amount"] *= 2
-        player_hand.add_card(self.deck.draw())
+        # Double the bet for this hand
+        game["hand_bets"][hand_idx] *= 2
+        hand.add_card(self.deck.draw())
 
-        return self._end_hand(round_id)
+        return self._advance_or_end(round_id)
+
+    # ── Internal ───────────────────────────────────────────────────────
 
     def _get_game(self, round_id: str) -> Dict[str, Any]:
         if round_id not in self._games:
             raise ValueError(f"Game round {round_id} not found")
         return self._games[round_id]
+
+    def _advance_or_end(self, round_id: str) -> GameResult:
+        """Move to the next active hand, or end the round if all hands done."""
+        game = self._get_game(round_id)
+        hand_idx = game["active_hand"]
+
+        # Move to next hand
+        next_hand = hand_idx + 1
+
+        if next_hand < len(game["player_hands"]):
+            game["active_hand"] = next_hand
+            return self._build_result(round_id)
+        else:
+            return self._end_hand(round_id)
 
     def _dealer_play(self, dealer_hand: Hand) -> None:
         """Dealer draws to 17 (stand on soft 17)."""
@@ -314,77 +423,114 @@ class BlackjackEngine(BaseGameEngine):
     def _end_hand(self, round_id: str) -> GameResult:
         """Finish the hand — dealer plays, compare, determine payout."""
         game = self._get_game(round_id)
-        player_hand: Hand = game["player_hand"]
+        player_hands: List[Hand] = game["player_hands"]
         dealer_hand: Hand = game["dealer_hand"]
-        bet = game["bet_amount"]
 
         # Reveal dealer hole card
         dealer_hand.cards[1].face_up = True
 
-        # Dealer plays if player hasn't busted
-        if not player_hand.is_busted:
+        total_bet = sum(game["hand_bets"])
+        total_payout = Decimal("0")
+        outcomes: List[str] = []
+        overall_won = False
+
+        # Dealer plays if at least one player hand hasn't busted
+        any_alive = any(not h.is_busted for h in player_hands)
+        if any_alive:
             self._dealer_play(dealer_hand)
 
+        # Evaluate each player hand
+        for i, hand in enumerate(player_hands):
+            bet = game["hand_bets"][i]
+
+            if hand.is_busted:
+                outcomes.append("bust")
+            elif dealer_hand.is_busted:
+                outcomes.append("win")
+                total_payout += bet * 2  # Stake + 1:1 win
+                overall_won = True
+            elif hand.best_value > dealer_hand.best_value:
+                # Check for natural blackjack (pays 3:2)
+                if hand.is_blackjack and len(player_hands) == 1 and not game["has_split"]:
+                    outcomes.append("blackjack")
+                    total_payout += bet + (bet * BLACKJACK_PAYOUT)
+                else:
+                    outcomes.append("win")
+                    total_payout += bet * 2  # 1:1 (split hands don't get 3:2)
+                overall_won = True
+            elif hand.best_value == dealer_hand.best_value:
+                outcomes.append("push")
+                total_payout += bet  # Push — return stake
+            else:
+                outcomes.append("lose")
+
+        # Handle insurance
+        insurance_bet = game["insurance_bet"]
+        if insurance_bet > 0 and dealer_hand.is_blackjack:
+            total_payout += insurance_bet * 3  # Stake back + 2:1
+            overall_won = True
+        elif insurance_bet > 0:
+            # Insurance lost, stake kept by house
+            pass
+
         game["is_finished"] = True
+        self._games.pop(round_id, None)
 
-        # Determine outcome
-        player_score = player_hand.best_value
+        # Determine overall outcome
+        if len(outcomes) == 1:
+            overall_outcome = outcomes[0]
+        else:
+            # Multiple hands — summarize
+            wins = outcomes.count("win")
+            losses = outcomes.count("lose")
+            busts = outcomes.count("bust")
+            pushes = outcomes.count("push")
+            if wins > 0:
+                overall_outcome = "win"
+            elif pushes > 0 and wins == 0:
+                overall_outcome = "push"
+            else:
+                overall_outcome = "lose"
+
+        # Net result = total_payout - total_bet - insurance_bet
+        net_result = total_payout - total_bet - insurance_bet
+
+        # Serialize all player hands
+        all_player_cards = [h.to_dict() for h in player_hands]
+        # For single hand, return flat list; for split, return list of lists
+        if len(player_hands) == 1:
+            serialized_cards = all_player_cards[0]
+        else:
+            serialized_cards = all_player_cards
+
         dealer_score = dealer_hand.best_value
-
-        if player_hand.is_busted:
-            won = False
-            payout = Decimal("0")
-            outcome = "bust"
-        elif dealer_hand.is_busted:
-            won = True
-            payout = bet
-            outcome = "dealer_bust"
-        elif player_hand.is_blackjack and not dealer_hand.is_blackjack:
-            won = True
-            payout = bet + (bet * BLACKJACK_PAYOUT)
-            outcome = "blackjack"
-        elif player_score > dealer_score:
-            won = True
-            payout = bet
-            outcome = "win"
-        elif player_score == dealer_score:
-            # Push
-            won = False
-            payout = bet  # Refund (not a win, but gets stake back)
-            outcome = "push"
-        else:
-            won = False
-            payout = Decimal("0")
-            outcome = "lose"
-
-        # Clean up game state
-        del self._games[round_id]
-
-        payout_amount = payout  # The amount OVER the original bet
-        if outcome == "push":
-            payout_amount = Decimal("0")
-        elif outcome == "blackjack":
-            payout_amount = bet * BLACKJACK_PAYOUT  # Extra beyond stake
-        elif won:
-            payout_amount = bet  # Win = get bet back + win bet amount
-        else:
-            payout_amount = Decimal("0") - bet  # Loss = lose bet amount
+        player_score = player_hands[0].best_value if player_hands else 0
 
         return GameResult(
             round_id=round_id,
             game_type="blackjack",
-            bet_amount=bet,
-            payout_amount=payout_amount,
-            won=won or outcome == "push",
+            bet_amount=total_bet + insurance_bet,
+            payout_amount=net_result,
+            won=overall_won,
             outcome_data={
-                "outcome": outcome,
-                "player_cards": player_hand.to_dict(),
+                "outcome": overall_outcome,
+                "outcomes": outcomes,
+                "player_cards": serialized_cards,
                 "dealer_cards": dealer_hand.to_dict(),
                 "player_score": player_score,
                 "dealer_score": dealer_score,
-                "player_busted": player_hand.is_busted,
+                "player_busted": any(h.is_busted for h in player_hands),
                 "dealer_busted": dealer_hand.is_busted,
-                "player_blackjack": player_hand.is_blackjack,
+                "player_blackjack": any(h.is_blackjack for h in player_hands),
+                "has_split": game["has_split"],
+                "hand_count": len(player_hands),
+                "active_hand": 0,
+                "insurance_offered": False,
+                "insurance_active": False,
+                "insurance_bet": str(insurance_bet),
+                "insurance_result": "won" if (insurance_bet > 0 and dealer_hand.is_blackjack) else ("lost" if insurance_bet > 0 else None),
+                "can_split": False,
+                "can_double": False,
                 "is_finished": True,
             },
         )
@@ -392,27 +538,41 @@ class BlackjackEngine(BaseGameEngine):
     def _build_result(self, round_id: str) -> GameResult:
         """Build a mid-game result (hand still in progress)."""
         game = self._get_game(round_id)
-        player_hand: Hand = game["player_hand"]
+        player_hands: List[Hand] = game["player_hands"]
         dealer_hand: Hand = game["dealer_hand"]
+        hand_idx = game["active_hand"]
+        active_hand = player_hands[hand_idx]
+
+        # Serialize all player hands
+        all_player_cards = [h.to_dict() for h in player_hands]
+        if len(player_hands) == 1:
+            serialized_cards = all_player_cards[0]
+        else:
+            serialized_cards = all_player_cards
 
         return GameResult(
             round_id=round_id,
             game_type="blackjack",
-            bet_amount=game["bet_amount"],
+            bet_amount=sum(game["hand_bets"]) + game["insurance_bet"],
             payout_amount=Decimal("0"),
             won=False,
             outcome_data={
                 "outcome": "playing",
-                "player_cards": player_hand.to_dict(),
+                "player_cards": serialized_cards,
                 "dealer_cards": dealer_hand.to_dict(hide_hole=True),
-                "player_score": player_hand.best_value,
+                "player_score": active_hand.best_value,
                 "dealer_score": dealer_hand.visible_value(hide_hole=True),
-                "player_busted": player_hand.is_busted,
+                "player_busted": active_hand.is_busted,
                 "dealer_busted": False,
-                "player_blackjack": player_hand.is_blackjack,
+                "player_blackjack": active_hand.is_blackjack,
+                "has_split": game["has_split"],
+                "hand_count": len(player_hands),
+                "active_hand": hand_idx,
                 "insurance_offered": game["insurance_offered"],
-                "can_split": player_hand.can_split,
-                "can_double": player_hand.can_double,
+                "insurance_active": game["insurance_bet"] > 0,
+                "insurance_bet": str(game["insurance_bet"]),
+                "can_split": not game["has_split"] and active_hand.can_split and len(player_hands) == 1,
+                "can_double": active_hand.can_double,
                 "is_finished": game["is_finished"],
             },
         )

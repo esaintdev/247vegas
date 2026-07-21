@@ -14,6 +14,139 @@ interface BaccaratResult {
   won: boolean; message: string | null;
 }
 
+// ── Bead Plate Component ──────────────────────────────────────────
+// Traditional Baccarat scoreboard: Big Road layout
+// 6 rows per column, left → right, top → bottom
+// Red ● = Player, Blue ● = Banker, Green ● = Tie
+
+function BeadPlate({ history }: { history: { outcome: string; score: string; natural?: boolean }[] }) {
+  if (history.length === 0) return null;
+
+  // Build columns (oldest results first)
+  const reversed = [...history].reverse();
+  const columns: { outcome: string; score: string }[][] = [];
+  let currentCol: { outcome: string; score: string }[] = [];
+
+  for (const item of reversed) {
+    currentCol.push(item);
+    if (currentCol.length === 6) {
+      columns.push(currentCol);
+      currentCol = [];
+    }
+  }
+  if (currentCol.length > 0) {
+    columns.push(currentCol);
+  }
+
+  const maxColumns = Math.min(columns.length, 14); // cap display width
+
+  return (
+    <div className="rounded-xl border border-gray-700/50 bg-gray-900/70 p-4">
+      {/* Header */}
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">
+          Big Road
+        </h3>
+        <div className="flex items-center gap-3 text-[10px] text-gray-500">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-red-500" /> Player
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-blue-500" /> Banker
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-600" /> Tie
+          </span>
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div className="overflow-x-auto">
+        <div className="inline-flex gap-px" style={{ minHeight: 6 * 28 + 2 }}>
+          {Array.from({ length: maxColumns }).map((_, colIdx) => {
+            const col = columns[colIdx];
+            return (
+              <div key={colIdx} className="flex flex-col gap-px">
+                {Array.from({ length: 6 }).map((_, rowIdx) => {
+                  const item = col[rowIdx];
+                  if (!item) {
+                    return (
+                      <div
+                        key={rowIdx}
+                        className="h-6 w-6 rounded-sm bg-gray-800/30"
+                      />
+                    );
+                  }
+                  const outcome = item.outcome;
+                  const isPlayer = outcome === "player";
+                  const isBanker = outcome === "banker";
+
+                  return (
+                    <motion.div
+                      key={rowIdx}
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 300,
+                        delay: (maxColumns - 1 - colIdx) * 0.03 + rowIdx * 0.05,
+                      }}
+                      className={`relative flex h-6 w-6 items-center justify-center rounded-sm text-[9px] font-bold ${
+                        isPlayer
+                          ? "bg-red-600 text-white"
+                          : isBanker
+                            ? "bg-blue-600 text-white"
+                            : "bg-green-700 text-white"
+                      }`}
+                      title={`${outcome} (${item.score})${item.natural ? ' NATURAL' : ''}`}
+                    >
+                      {isPlayer ? "P" : isBanker ? "B" : "T"}
+                      {item.natural && (
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="inline-block h-2 w-2 rounded-full border border-white/60 bg-transparent" />
+                        </span>
+                      )}
+                    </motion.div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Stats bar */}
+      {history.length > 0 && (
+        <div className="mt-3 flex items-center gap-3 border-t border-gray-800 pt-2 text-[10px] text-gray-500">
+          <span>
+            Total: <strong className="text-white">{history.length}</strong>
+          </span>
+          <span>
+            P:{" "}
+            <strong className="text-red-400">
+              {history.filter((h) => h.outcome === "player").length}
+            </strong>
+          </span>
+          <span>
+            B:{" "}
+            <strong className="text-blue-400">
+              {history.filter((h) => h.outcome === "banker").length}
+            </strong>
+          </span>
+          <span>
+            T:{" "}
+            <strong className="text-green-400">
+              {history.filter((h) => h.outcome === "tie").length}
+            </strong>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ───────────────────────────────────────────────────────
+
 export default function BaccaratPage() {
   const navigate = useNavigate();
   const { wallet, fetchWallet } = useWalletStore();
@@ -21,7 +154,7 @@ export default function BaccaratPage() {
   const [betAmount, setBetAmount] = useState(10);
   const [result, setResult] = useState<BaccaratResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [history, setHistory] = useState<{ outcome: string; score: string }[]>([]);
+  const [history, setHistory] = useState<{ outcome: string; score: string; natural?: boolean }[]>([]);
   const [winModalOpen, setWinModalOpen] = useState(false);
 
   const handleBet = useCallback(async () => {
@@ -33,7 +166,7 @@ export default function BaccaratPage() {
       });
       setResult(data);
       if (data.won) setWinModalOpen(true);
-      setHistory(prev => [{ outcome: data.outcome, score: `${data.player_score}-${data.banker_score}` }, ...prev.slice(0, 9)]);
+      setHistory(prev => [{ outcome: data.outcome, score: `${data.player_score}-${data.banker_score}`, natural: data.natural }, ...prev.slice(0, 84)]);
       fetchWallet();
     } catch { /* ignore */ }
     setLoading(false);
@@ -118,6 +251,11 @@ export default function BaccaratPage() {
               </motion.button>
             ))}
           </div>
+
+          {/* ⬇️ Scoreboard — below the table, full width */}
+          <div className="mt-6">
+            <BeadPlate history={history} />
+          </div>
         </div>
 
         {/* Side panel */}
@@ -140,15 +278,33 @@ export default function BaccaratPage() {
             {loading ? "Dealing..." : `Deal $${betAmount}`}
           </motion.button>
 
+          {/* Quick Stats in side panel */}
           {history.length > 0 && (
-            <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-6">
-              <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Recent</h3>
-              <div className="flex flex-wrap gap-1.5">
-                {history.map((h, i) => (
-                  <span key={i} className={`rounded-full px-2 py-0.5 text-xs font-medium ${h.outcome === "player" ? "bg-blue-500/20 text-blue-400" : h.outcome === "banker" ? "bg-red-500/20 text-red-400" : "bg-green-500/20 text-green-400"}`}>
-                    {h.outcome} ({h.score})
-                  </span>
-                ))}
+            <div className="rounded-xl border border-gray-700/50 bg-gray-800/50 p-5">
+              <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">Streaks</h3>
+              <div className="space-y-1 text-xs text-gray-400">
+                {(() => {
+                  // Find current streak
+                  const lastOutcomes = history.map(h => h.outcome);
+                  let streak = 1;
+                  for (let i = 0; i < lastOutcomes.length - 1; i++) {
+                    if (lastOutcomes[i] === lastOutcomes[i + 1]) streak++;
+                    else break;
+                  }
+                  const streakType = lastOutcomes[0];
+                  return (
+                    <p>
+                      Current:{" "}
+                      <strong className={
+                        streakType === "player" ? "text-red-400" :
+                        streakType === "banker" ? "text-blue-400" : "text-green-400"
+                      }>
+                        {streak}x {streakType}
+                      </strong>
+                    </p>
+                  );
+                })()}
+                <p>Last: {history[0]?.outcome} ({history[0]?.score})</p>
               </div>
             </div>
           )}
