@@ -18,7 +18,8 @@ const apiClient = axios.create({
 // ── Request interceptor: attach auth token ──────────────────────────
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem("access_token");
-  if (token && config.headers) {
+  // Only inject stored token if the request doesn't already carry one
+  if (token && config.headers && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
