@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import apiClient from "@/api/client";
 import { useWalletStore } from "@/store/walletStore";
+import WinModal from "@/components/games/WinModal";
 
 interface PokerResult {
   round_id: string; stage: string; community: string[];
@@ -56,12 +57,15 @@ export default function PokerPage() {
   const [loading, setLoading] = useState(false);
   const [showAiCards, setShowAiCards] = useState(false);
   const [history, setHistory] = useState<{ outcome: string; rank: string }[]>([]);
+  const [winModalOpen, setWinModalOpen] = useState(false);
 
   const deal = useCallback(async () => {
-    setLoading(true); setResult(null); setShowAiCards(false);
+    setLoading(true); setResult(null); setShowAiCards(false); setWinModalOpen(false);
     try {
       const { data } = await apiClient.post<PokerResult>("/poker/bet", { action: "deal" });
-      setResult(data); fetchWallet();
+      setResult(data);
+      if (data.is_finished && data.outcome === "win") setWinModalOpen(true);
+      fetchWallet();
     } catch { /* ignore */ }
     setLoading(false);
   }, [fetchWallet]);
@@ -73,6 +77,7 @@ export default function PokerPage() {
       const { data } = await apiClient.post<PokerResult>(`/poker/bet`, { action: "showdown" });
       setResult(data);
       if (data.is_finished) {
+        if (data.outcome === "win") setWinModalOpen(true);
         setHistory(prev => [{ outcome: data.outcome || "?", rank: data.player_rank || "?" }, ...prev.slice(0, 9)]);
       }
       fetchWallet();
@@ -234,6 +239,8 @@ export default function PokerPage() {
           )}
         </div>
       </div>
+
+      <WinModal open={winModalOpen} amount={result?.pot || "0"} message={result?.message || undefined} onClose={() => setWinModalOpen(false)} />
     </div>
   );
 }

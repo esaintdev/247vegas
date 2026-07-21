@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import apiClient from "@/api/client";
 import { useWalletStore } from "@/store/walletStore";
+import WinModal from "@/components/games/WinModal";
 
 interface CrashResult {
   round_id: string; outcome: string; crash_multiplier: number;
@@ -21,6 +22,7 @@ export default function CrashPage() {
   const [multiplier, setMultiplier] = useState(1.00);
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<{ mult: number; won: boolean }[]>([]);
+  const [winModalOpen, setWinModalOpen] = useState(false);
   const animRef = useRef<number>(0);
 
   useEffect(() => {
@@ -60,7 +62,7 @@ export default function CrashPage() {
 
   const handleBet = useCallback(async () => {
     if (loading || running) return;
-    setLoading(true); setResult(null);
+    setLoading(true); setResult(null); setWinModalOpen(false);
 
     try {
       const { data } = await apiClient.post<CrashResult>("/crash/bet", {
@@ -68,6 +70,7 @@ export default function CrashPage() {
       });
       // Store result immediately (hidden behind crash animation)
       setResult(data);
+      if (data.won) setWinModalOpen(true);
       setHistory(prev => [{ mult: data.crash_multiplier, won: data.won }, ...prev.slice(0, 19)]);
 
       simulateCrash(data.crash_multiplier, data.cash_out_at, data.won);
@@ -177,6 +180,8 @@ export default function CrashPage() {
           )}
         </div>
       </div>
+
+      <WinModal open={winModalOpen} amount={result?.payout || "0"} message={result?.message || undefined} onClose={() => setWinModalOpen(false)} />
     </div>
   );
 }

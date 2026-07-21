@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import apiClient from "@/api/client";
 import { useWalletStore } from "@/store/walletStore";
+import WinModal from "@/components/games/WinModal";
 
 interface BaccaratResult {
   round_id: string; outcome: string;
@@ -21,15 +22,17 @@ export default function BaccaratPage() {
   const [result, setResult] = useState<BaccaratResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<{ outcome: string; score: string }[]>([]);
+  const [winModalOpen, setWinModalOpen] = useState(false);
 
   const handleBet = useCallback(async () => {
     if (loading) return;
-    setLoading(true); setResult(null);
+    setLoading(true); setResult(null); setWinModalOpen(false);
     try {
       const { data } = await apiClient.post<BaccaratResult>("/baccarat/bet", {
         bet_amount: betAmount, bet_type: betType,
       });
       setResult(data);
+      if (data.won) setWinModalOpen(true);
       setHistory(prev => [{ outcome: data.outcome, score: `${data.player_score}-${data.banker_score}` }, ...prev.slice(0, 9)]);
       fetchWallet();
     } catch { /* ignore */ }
@@ -157,6 +160,8 @@ export default function BaccaratPage() {
           )}
         </div>
       </div>
+
+      <WinModal open={winModalOpen} amount={result?.payout || "0"} message={result?.message || undefined} onClose={() => setWinModalOpen(false)} />
     </div>
   );
 }

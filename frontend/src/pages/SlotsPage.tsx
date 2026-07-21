@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import apiClient from "@/api/client";
 import { useWalletStore } from "@/store/walletStore";
+import WinModal from "@/components/games/WinModal";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ export default function SlotsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [spinning, setSpinning] = useState(false);
   const [history, setHistory] = useState<{ win: number; bet: number }[]>([]);
+  const [winModalOpen, setWinModalOpen] = useState(false);
   const spinTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalBet = betAmount;
@@ -74,6 +76,7 @@ export default function SlotsPage() {
     setIsLoading(true);
     setSpinning(true);
     setResult(null);
+    setWinModalOpen(false);
 
     try {
       const { data } = await apiClient.post<SpinResult>("/slots/spin", {
@@ -83,6 +86,7 @@ export default function SlotsPage() {
 
       // Store the real result immediately (grid, win, etc.)
       setResult(data);
+      if (data.won) setWinModalOpen(true);
 
       // Stop spinning animation after the reels have visually settled
       spinTimeout.current = setTimeout(() => {
@@ -410,6 +414,8 @@ export default function SlotsPage() {
           </span>
         </div>
       )}
+
+      <WinModal open={winModalOpen} amount={result?.total_win || "0"} onClose={() => setWinModalOpen(false)} />
     </div>
   );
 }

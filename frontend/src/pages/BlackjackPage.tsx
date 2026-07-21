@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import apiClient from "@/api/client";
 import { useWalletStore } from "@/store/walletStore";
 import PlayingCard from "@/components/games/PlayingCard";
+import WinModal from "@/components/games/WinModal";
 
 interface CardData {
   suit: string;
@@ -44,6 +45,7 @@ export default function BlackjackPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [lastMessage, setLastMessage] = useState<string | null>(null);
+  const [winModalOpen, setWinModalOpen] = useState(false);
   const [gameHistory, setGameHistory] = useState<
     { outcome: string; amount: number }[]
   >([]);
@@ -60,6 +62,7 @@ export default function BlackjackPage() {
       });
       setGameState(data);
       if (data.is_finished) {
+        if (data.won) setWinModalOpen(true);
         setShowResult(true);
         setLastMessage(data.message);
         setGameHistory((prev) => [
@@ -88,6 +91,7 @@ export default function BlackjackPage() {
         );
         setGameState(data);
         if (data.is_finished) {
+          if (data.won) setWinModalOpen(true);
           setShowResult(true);
           setLastMessage(data.message);
           setGameHistory((prev) => [
@@ -112,6 +116,7 @@ export default function BlackjackPage() {
     setGameState(null);
     setShowResult(false);
     setLastMessage(null);
+    setWinModalOpen(false);
   };
 
   const canAct = gameState && !gameState.is_finished && !isLoading;
@@ -352,6 +357,8 @@ export default function BlackjackPage() {
           </div>
         )}
       </div>
+
+      <WinModal open={winModalOpen} amount={gameState?.payout_amount ?? 0} message={gameState?.message || undefined} onClose={() => setWinModalOpen(false)} />
     </div>
   );
 }

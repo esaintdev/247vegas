@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import apiClient from "@/api/client";
 import { useWalletStore } from "@/store/walletStore";
+import WinModal from "@/components/games/WinModal";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -335,6 +336,7 @@ export default function RoulettePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [spinning, setSpinning] = useState(false);
   const [spinHistory, setSpinHistory] = useState<number[]>([]);
+  const [winModalOpen, setWinModalOpen] = useState(false);
   const [selectedChip, setSelectedChip] = useState(1);
 
   const totalBet = bets.reduce((sum, b) => sum + b.amount, 0);
@@ -385,6 +387,7 @@ export default function RoulettePage() {
     setIsLoading(true);
     setSpinning(true);
     setResult(null);
+    setWinModalOpen(false);
 
     try {
       const { data } = await apiClient.post<SpinResult>("/roulette/spin", {
@@ -396,6 +399,7 @@ export default function RoulettePage() {
       });
       // Store result immediately (hidden behind wheel animation)
       setResult(data);
+      if (data.won) setWinModalOpen(true);
       setSpinHistory((prev) => [data.winning_number, ...prev.slice(0, 19)]);
       setBets([]);
 
@@ -808,6 +812,8 @@ export default function RoulettePage() {
           </span>
         </div>
       )}
+
+      <WinModal open={winModalOpen} amount={result?.net_result || "0"} message={result?.message || undefined} onClose={() => setWinModalOpen(false)} />
     </div>
   );
 }
