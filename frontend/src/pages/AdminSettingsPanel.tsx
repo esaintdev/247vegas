@@ -18,7 +18,7 @@ interface LiveSession {
 // ── Settings Panel ────────────────────────────────────────────
 
 export function PlatformSettingsPanel() {
-  const [settings, setSettings] = useState<Settings | null>(null);
+  const [, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);

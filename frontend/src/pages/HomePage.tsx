@@ -66,12 +66,12 @@ const floatingItems = [
   { icon: "🃏", delay: 1.2, x: "40%", size: "text-2xl", opacity: 0.10 },
 ];
 
-const stats = [
-  { label: "Active Players", value: "12,847" },
-  { label: "Total Payouts", value: "$4.2M" },
-  { label: "Games Available", value: "50+" },
-  { label: "Winners Today", value: "3,219" },
-];
+// const stats = [
+//   { label: "Active Players", value: "12,847" },
+//   { label: "Total Payouts", value: "$4.2M" },
+//   { label: "Games Available", value: "50+" },
+//   { label: "Winners Today", value: "3,219" },
+// ];
 
 export default function HomePage() {
   const heroRef = useRef<HTMLElement>(null);
