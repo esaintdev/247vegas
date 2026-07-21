@@ -644,16 +644,18 @@ export default function CrashPage() {
       {/* Game area */}
       <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
         {/* Graph */}
-        <div className="relative overflow-hidden rounded-2xl border border-gray-700/50 bg-gray-900/30 p-3">
-          <CrashGraph
-            gameState={gameState}
-            currentMult={currentMult}
-            crashAt={crashAt}
-            cashoutMult={cashoutMult}
-            explosionProgress={explosionProgress}
-            celebrationProgress={celebrationProgress}
-            history={history.slice(0, 20)}
-          />
+        <div className="relative overflow-hidden rounded-2xl border border-gray-700/50 bg-gray-900/30 p-3" style={{ minHeight: 420 }}>
+          <div className="h-[380px]">
+            <CrashGraph
+              gameState={gameState}
+              currentMult={currentMult}
+              crashAt={crashAt}
+              cashoutMult={cashoutMult}
+              explosionProgress={explosionProgress}
+              celebrationProgress={celebrationProgress}
+              history={history.slice(0, 20)}
+            />
+          </div>
 
           {/* Overlay multiplier (big, shown during running) */}
           <AnimatePresence>
@@ -671,7 +673,7 @@ export default function CrashPage() {
           </AnimatePresence>
 
           {/* History bar at bottom */}
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="mt-3 flex flex-wrap gap-1">
             {history.slice(0, 20).map((h, i) => (
               <span
                 key={i}
