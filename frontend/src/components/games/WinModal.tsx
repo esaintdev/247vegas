@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface WinModalProps {
@@ -8,6 +9,7 @@ interface WinModalProps {
 }
 
 export default function WinModal({ open, amount, message, onClose }: WinModalProps) {
+  const [imgError, setImgError] = useState(false);
   const formatted = typeof amount === "number" ? amount.toFixed(2) : amount;
 
   return (
@@ -27,22 +29,22 @@ export default function WinModal({ open, amount, message, onClose }: WinModalPro
             className="relative mx-4 w-full max-w-sm rounded-[32px] border border-amber-500/30 bg-gradient-to-b from-gray-900 to-black p-8 text-center shadow-2xl shadow-amber-500/10"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Image space */}
+            {/* Image / Emoji */}
             <div className="mx-auto mb-6 flex h-40 w-40 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-amber-500/30 bg-amber-500/5">
-              <img
-                src="/win-image.png"
-                alt=""
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                  (e.target as HTMLImageElement).parentElement!.classList.add("flex", "items-center", "justify-center");
-                  (e.target as HTMLImageElement).parentElement!.innerHTML = '<span class="text-5xl">🎉</span>';
-                }}
-              />
+              {imgError ? (
+                <span className="text-6xl">🎉</span>
+              ) : (
+                <img
+                  src="/win-image.png"
+                  alt=""
+                  className="h-full w-full object-cover"
+                  onError={() => setImgError(true)}
+                />
+              )}
             </div>
 
-            <p className="mb-1 text-sm font-bold uppercase tracking-[0.2em] text-amber-400/70">You Won!</p>
-            <p className="font-display text-5xl font-black tracking-tight text-amber-400 drop-shadow-[0_0_20px_rgba(251,191,36,0.3)]">
+            <p className="mb-2 text-sm font-bold uppercase tracking-[0.2em] text-amber-400/70">You Won!</p>
+            <p className="font-display text-6xl font-black tracking-tight text-amber-400 drop-shadow-[0_0_25px_rgba(251,191,36,0.4)]">
               ${formatted}
             </p>
 
