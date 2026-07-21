@@ -106,6 +106,37 @@
 /* ── Animations ─────────────────────────────────────────────────── */
 
 @layer utilities {
+  /* Slot payline drawing animation */
+  @keyframes payline-draw {
+    from {
+      stroke-dashoffset: 2000;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes payline-dot {
+    from {
+      opacity: 0;
+      transform: scale(0);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes payline-label {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
   .text-gradient {
     @apply bg-gradient-to-r from-casino-gold via-amber-400 to-yellow-300
            bg-clip-text text-transparent;

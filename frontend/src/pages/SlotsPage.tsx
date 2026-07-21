@@ -16,6 +16,7 @@ interface SpinResult {
     count: number;
     win_amount: string;
     positions: number[][];
+    payline_index: number[][];
   }[];
   scatter_count: number;
   scatter_win: string;
@@ -67,6 +68,9 @@ export default function SlotsPage() {
   const [history, setHistory] = useState<{ win: number; bet: number }[]>([]);
   const [winModalOpen, setWinModalOpen] = useState(false);
   const spinTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [cellCenters, setCellCenters] = useState<Record<string, { x: number; y: number }>>({});
+  const [currentPaylineIdx, setCurrentPaylineIdx] = useState(-1);
 
   const totalBet = betAmount;
 
@@ -106,7 +110,7 @@ export default function SlotsPage() {
     }
   }, [betAmount, lines, isLoading, spinning, fetchWallet]);
 
-  // Cleanup timeout on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (spinTimeout.current) {
@@ -114,6 +118,47 @@ export default function SlotsPage() {
       }
     };
   }, []);
+
+  // Measure cell positions when result arrives and spinning stops
+  useEffect(() => {
+    if (!result || spinning || !gridRef.current) {
+      setCurrentPaylineIdx(-1);
+      return;
+    }
+
+    const container = gridRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const centers: Record<string, { x: number; y: number }> = {};
+
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 5; c++) {
+        const cell = container.querySelector(`[data-row="${r}"][data-col="${c}"]`);
+        if (cell) {
+          const rect = (cell as HTMLElement).getBoundingClientRect();
+          centers[`${r}-${c}`] = {
+            x: rect.left + rect.width / 2 - containerRect.left,
+            y: rect.top + rect.height / 2 - containerRect.top,
+          };
+        }
+      }
+    }
+    setCellCenters(centers);
+    setCurrentPaylineIdx(0);
+  }, [result, spinning]);
+
+  // Cycle through winning paylines one at a time
+  useEffect(() => {
+    if (currentPaylineIdx < 0 || !result?.paylines?.length) return;
+
+    const id = setTimeout(() => {
+      setCurrentPaylineIdx((prev) => {
+        if (prev < 0 || !result?.paylines?.length) return -1;
+        return (prev + 1) % result.paylines.length;
+      });
+    }, 2000);
+
+    return () => clearTimeout(id);
+  }, [currentPaylineIdx, result?.paylines?.length]);
 
   const lineCost = (betAmount / lines).toFixed(2);
 
@@ -158,7 +203,7 @@ export default function SlotsPage() {
             </div>
 
             {/* Reel grid */}
-            <div className="relative rounded-xl border border-gray-700 bg-gray-900/50 p-3">
+            <div ref={gridRef} className="relative rounded-xl border border-gray-700 bg-gray-900/50 p-3">
               {/* Payline indicators */}
               <div className="absolute -left-1 top-0 flex h-full flex-col justify-evenly">
                 {[0, 1, 2].map((r) => (
@@ -185,6 +230,8 @@ export default function SlotsPage() {
                     return (
                       <motion.div
                         key={`${ri}-${ci}`}
+                        data-row={ri}
+                        data-col={ci}
                         className={`flex aspect-square items-center justify-center rounded-xl text-2xl sm:text-3xl md:text-4xl ${bg} ${color} ${
                           isWin ? "ring-2 ring-casino-gold shadow-lg shadow-casino-gold/30" : ""
                         }`}
@@ -237,6 +284,104 @@ export default function SlotsPage() {
                   }),
                 )}
               </div>
+
+              {/* Winning payline path overlay */}
+              {result && !spinning && currentPaylineIdx >= 0 && result.paylines.length > 0 && result.paylines[currentPaylineIdx]?.payline_index && (
+                <svg
+                  className="pointer-events-none absolute inset-0 z-10 h-full w-full"
+                  style={{ overflow: "visible" }}
+                >
+                  {(() => {
+                    const pl = result.paylines[currentPaylineIdx];
+                    const fullPath: number[][] = pl.payline_index;
+                    const winningPositions: number[][] = pl.positions;
+
+                    // Compute pixel coordinates from cell centers
+                    const points = fullPath
+                      .map(([r, c]) => cellCenters[`${r}-${c}`])
+                      .filter(Boolean);
+                    const pointsStr = points.map((p) => `${p.x},${p.y}`).join(" ");
+
+                    // Only the winning segment's cells get dots
+                    const winPoints = winningPositions
+                      .map(([r, c]) => cellCenters[`${r}-${c}`])
+                      .filter(Boolean);
+
+                    if (points.length < 2) return null;
+
+                    return (
+                      <g>
+                        {/* Glow trail */}
+                        <polyline
+                          points={pointsStr}
+                          fill="none"
+                          stroke="rgba(251, 191, 36, 0.25)"
+                          strokeWidth={10}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="animate-pulse"
+                        />
+                        {/* Main line */}
+                        <polyline
+                          points={pointsStr}
+                          fill="none"
+                          stroke="#f59e0b"
+                          strokeWidth={3}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeDasharray="2000"
+                          strokeDashoffset={0}
+                          style={{
+                            animation: `payline-draw 0.6s ease-out forwards`,
+                          }}
+                        />
+                        {/* Dots at winning positions */}
+                        {winPoints.map((pt, i) => (
+                          <g key={i}>
+                            <circle
+                              cx={pt.x}
+                              cy={pt.y}
+                              r={8}
+                              fill="none"
+                              stroke="#f59e0b"
+                              strokeWidth={2}
+                              style={{
+                                animation: `payline-dot 0.3s ease-out ${0.6 + i * 0.1}s forwards`,
+                                opacity: 0,
+                              }}
+                            />
+                            <circle
+                              cx={pt.x}
+                              cy={pt.y}
+                              r={4}
+                              fill="#fbbf24"
+                              style={{
+                                animation: `payline-dot 0.3s ease-out ${0.6 + i * 0.1}s forwards`,
+                                opacity: 0,
+                              }}
+                            />
+                          </g>
+                        ))}
+                        {/* Payline label */}
+                        <text
+                          x={points[points.length - 1].x}
+                          y={points[points.length - 1].y - 16}
+                          textAnchor="middle"
+                          fill="#fbbf24"
+                          fontSize={11}
+                          fontWeight={700}
+                          style={{
+                            animation: `payline-label 0.3s ease-out 0.8s forwards`,
+                            opacity: 0,
+                          }}
+                        >
+                          {`Payline ${currentPaylineIdx + 1}`}
+                        </text>
+                      </g>
+                    );
+                  })()}
+                </svg>
+              )}
             </div>
 
             {/* Win display */}
