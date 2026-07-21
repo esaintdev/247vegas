@@ -24,8 +24,8 @@ function BeadPlate({ history }: { history: { outcome: string; score: string; nat
 
   // Build columns (oldest results first)
   const reversed = [...history].reverse();
-  const columns: { outcome: string; score: string }[][] = [];
-  let currentCol: { outcome: string; score: string }[] = [];
+  const columns: { outcome: string; score: string; natural?: boolean }[][] = [];
+  let currentCol: { outcome: string; score: string; natural?: boolean }[] = [];
 
   for (const item of reversed) {
     currentCol.push(item);
