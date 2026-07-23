@@ -12,11 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.dependencies import get_session, require_admin, require_permission
-from app.models.game import GameConfig, GameRound, GameType
+from app.models.game import GameConfig, GameRound, GameType, RoundStatus
+from app.models.notification import Notification
 from app.models.user import User
 from app.models.wallet import Transaction, TransactionStatus, Wallet as WalletModel
 from app.schemas.user import UserResponse
 from app.services.audit import AuditLogEntryResponse, get_audit_logs, log_admin_action
+from app.services.provably_fair import ProvablyFairService
 from app.services.withdrawal import WithdrawalService, WithdrawalError
 from pydantic import BaseModel, Field, field_serializer
 
@@ -192,6 +194,7 @@ async def list_users(
             display_name=user.display_name, is_active=user.is_active,
             is_verified=user.is_verified, created_at=user.created_at,
             updated_at=user.updated_at,
+            last_login_at=user.last_login_at, last_login_ip=user.last_login_ip,
             wallet_balance=balance, wallet_locked=locked,
             transaction_count=tx_count or 0, game_count=game_count or 0,
         ))
@@ -227,6 +230,7 @@ async def get_user_detail(
         display_name=user.display_name, is_active=user.is_active,
         is_verified=user.is_verified, created_at=user.created_at,
         updated_at=user.updated_at,
+        last_login_at=user.last_login_at, last_login_ip=user.last_login_ip,
         wallet_balance=balance, wallet_locked=locked,
         transaction_count=tx_count, game_count=game_count,
     )
@@ -418,6 +422,8 @@ class UserFullDetailResponse(BaseModel):
     is_admin: bool
     created_at: datetime
     updated_at: datetime
+    last_login_at: Optional[datetime] = None
+    last_login_ip: Optional[str] = None
     # Wallet
     wallet_balance: str = "0.00"
     wallet_locked: str = "0.00"
@@ -508,6 +514,8 @@ async def adjust_wallet(
     session: AsyncSession = Depends(get_session),
 ):
     """Manually credit or debit a user's wallet (for bonuses, corrections, chargebacks)."""
+    if user_id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot adjust your own wallet")
     result = await session.execute(
         select(WalletModel).where(WalletModel.user_id == user_id).with_for_update()
     )
@@ -676,6 +684,7 @@ async def get_user_full_detail(
         display_name=user.display_name, is_active=user.is_active,
         is_verified=user.is_verified, is_admin=user.is_admin,
         created_at=user.created_at, updated_at=user.updated_at,
+        last_login_at=user.last_login_at, last_login_ip=user.last_login_ip,
         wallet_balance=str(wallet.balance) if wallet else "0.00",
         wallet_locked=str(wallet.locked_amount) if wallet else "0.00",
         wallet_bonus=str(wallet.bonus_balance) if wallet else "0.00",
@@ -797,4 +806,151 @@ async def update_admin_role(
         "user_id": user_id,
         "admin_role": user.admin_role,
         "is_admin": user.is_admin,
+    }
+
+
+# ── Admin Notification Send ─────────────────────────────────────────
+
+class SendNotificationRequest(BaseModel):
+    user_id: str = Field(..., description="Target user ID or 'ALL' for broadcast")
+    title: str = Field(..., min_length=1, max_length=200)
+    message: str = Field(..., min_length=1, max_length=2000)
+    type: str = Field(default="system", max_length=50)
+    link: Optional[str] = Field(None, max_length=500)
+
+
+@router.post("/notifications/send")
+async def send_admin_notification(
+    payload: SendNotificationRequest,
+    admin: User = Depends(require_admin),
+    _: User = Depends(require_permission("write:notifications")),
+    session: AsyncSession = Depends(get_session),
+):
+    """Send a notification to a specific user or broadcast to all users."""
+    sent_count = 0
+
+    if payload.user_id.upper() == "ALL":
+        # Broadcast to all users
+        result = await session.execute(select(User).where(User.is_active == True))
+        users = result.scalars().all()
+        for target_user in users:
+            notif = Notification(
+                user_id=target_user.id,
+                type=payload.type,
+                title=payload.title,
+                message=payload.message,
+                link=payload.link,
+            )
+            session.add(notif)
+            sent_count += 1
+    else:
+        # Single user
+        result = await session.execute(select(User).where(User.id == payload.user_id))
+        target_user = result.scalar_one_or_none()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        notif = Notification(
+            user_id=target_user.id,
+            type=payload.type,
+            title=payload.title,
+            message=payload.message,
+            link=payload.link,
+        )
+        session.add(notif)
+        sent_count = 1
+
+    await log_admin_action(
+        session, admin, "send_notification",
+        target_type="notification",
+        details={"count": sent_count, "type": payload.type, "title": payload.title},
+    )
+    await session.flush()
+
+    return {
+        "status": "ok",
+        "sent_count": sent_count,
+        "message": f"Notification sent to {sent_count} user(s)",
+    }
+
+
+# ── Provably Fair Verification ────────────────────────────────────────
+
+class VerifyRoundRequest(BaseModel):
+    round_id: str = Field(..., description="Game round ID to verify")
+
+
+class RoundSeedInfo(BaseModel):
+    """Seed and hash info for a round."""
+    round_id: str
+    game_type: str
+    server_seed: Optional[str] = None
+    server_seed_hash: Optional[str] = None
+    client_seed: Optional[str] = None
+    nonce: int = 0
+    is_completed: bool = False
+    has_seeds: bool = False
+
+
+@router.post("/fairness/verify-round")
+async def verify_round_fairness(
+    payload: VerifyRoundRequest,
+    admin: User = Depends(require_admin),
+    _: User = Depends(require_permission("fairness:read")),
+    session: AsyncSession = Depends(get_session),
+):
+    """Verify the provable fairness of a completed game round.
+
+    Returns the round's seeds + hash and whether the hash matches the revealed seed.
+    """
+    result = await session.execute(
+        select(GameRound).where(GameRound.id == payload.round_id)
+    )
+    game_round = result.scalar_one_or_none()
+    if not game_round:
+        raise HTTPException(status_code=404, detail="Game round not found")
+
+    # Return seed info even if incomplete — let the frontend show appropriate state
+    seed_info = RoundSeedInfo(
+        round_id=game_round.id,
+        game_type=game_round.game_type.value if hasattr(game_round.game_type, "value") else str(game_round.game_type),
+        server_seed=game_round.server_seed,
+        server_seed_hash=game_round.seed_hash,
+        client_seed=game_round.client_seed,
+        nonce=game_round.nonce,
+        is_completed=game_round.is_completed,
+        has_seeds=game_round.seed_hash is not None,
+    )
+
+    if not seed_info.has_seeds:
+        return {
+            "has_seeds": False,
+            "seed_info": seed_info.model_dump(),
+            "verification": None,
+            "message": "This round has no provably fair seeds. It was played before seed tracking was implemented.",
+        }
+
+    if not seed_info.server_seed:
+        return {
+            "has_seeds": True,
+            "seed_info": seed_info.model_dump(),
+            "verification": None,
+            "message": "Server seed not yet revealed. Seeds are revealed after the round completes. This round may still be in progress." if not game_round.is_completed
+                else "Server seed is missing for a completed round. This may indicate an error.",
+        }
+
+    # Perform verification
+    verification = ProvablyFairService.verify_round(
+        round_id=game_round.id,
+        game_type=seed_info.game_type,
+        server_seed=seed_info.server_seed,
+        server_seed_hash=seed_info.server_seed_hash or "",
+        client_seed=seed_info.client_seed,
+        nonce=seed_info.nonce,
+    )
+
+    return {
+        "has_seeds": True,
+        "seed_info": seed_info.model_dump(),
+        "verification": verification.model_dump(),
+        "message": verification.message,
     }

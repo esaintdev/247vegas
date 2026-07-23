@@ -4,9 +4,12 @@ import apiClient from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
 import { useNavigate } from "react-router-dom";
 import { BonusesPanel } from "./AdminBonusesPanel";
+import { AdminNotifyPanel } from "./AdminNotifyPanel";
+import { FairnessPanel } from "./AdminFairnessPanel";
 import { PlatformSettingsPanel, GameControlPanel } from "./AdminSettingsPanel";
+import { downloadCsv, toCsv } from "@/utils/csv";
 
-type Tab = "overview" | "users" | "transactions" | "games" | "kyc" | "analytics" | "settings" | "bonuses" | "gamecontrol" | "platform" | "audit" | "roles";
+type Tab = "overview" | "users" | "transactions" | "games" | "kyc" | "analytics" | "settings" | "bonuses" | "gamecontrol" | "platform" | "audit" | "roles" | "notify" | "fairness";
 
 interface Stats {
   total_users: number; active_users: number;
@@ -93,6 +96,8 @@ const navItems: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "platform", label: "Platform", icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> },
   { id: "audit", label: "Audit Log", icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> },
   { id: "roles", label: "Admin Roles", icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg> },
+  { id: "notify", label: "Notify", icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> },
+  { id: "fairness", label: "Fairness", icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg> },
 ];
 
 export default function AdminPage() {
@@ -109,6 +114,7 @@ export default function AdminPage() {
   const [gamePop, setGamePop] = useState<GamePopRow[]>([]);
   const [userGrowth, setUserGrowth] = useState<UserGrowthPoint[]>([]);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -139,9 +145,9 @@ export default function AdminPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  useEffect(() => {
-    if (tab !== "analytics") return;
+  const loadAnalytics = useCallback(() => {
     setAnalyticsLoading(true);
+    setAnalyticsError(null);
     Promise.all([
       apiClient.get<ActiveUsersResponse>("/analytics/active-users"),
       apiClient.get<RevenuePoint[]>("/analytics/revenue-trends?days=14"),
@@ -152,8 +158,18 @@ export default function AdminPage() {
       setRevenueTrends(rt.data);
       setGamePop(gp.data);
       setUserGrowth(ug.data);
-    }).catch(() => {}).finally(() => setAnalyticsLoading(false));
-  }, [tab]);
+    }).catch((err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        || (err as Error)?.message
+        || "Failed to load analytics data";
+      setAnalyticsError(msg);
+    }).finally(() => setAnalyticsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "analytics") return;
+    loadAnalytics();
+  }, [tab, loadAnalytics]);
 
   const toggleActive = async (userId: string) => {
     await apiClient.post(`/admin/users/${userId}/toggle-active`);
@@ -232,6 +248,10 @@ export default function AdminPage() {
 
   const formatCurrency = (val: string) =>
     `$${parseFloat(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const exportCsv = (data: any[], columns: { key: string; label: string }[], filename: string) => {
+    downloadCsv(toCsv(data, columns), filename);
+  };
 
   // ── Admin Roles Panel ─────────────────────────────
   interface AdminUser {
@@ -684,29 +704,54 @@ export default function AdminPage() {
                       </div>
                     ) : (
                       <>
-                        {activeUsers && (
-                          <div>
-                            <h2 className="mb-4 text-sm font-bold tracking-wide text-gray-700 uppercase">Active Users</h2>
-                            <div className="grid gap-4 sm:grid-cols-4">
-                              {[
-                                { label: "Last Hour", value: activeUsers.last_hour, border: "border-b-red-400", text: "text-red-600" },
-                                { label: "Last 24h", value: activeUsers.last_24h, border: "border-b-amber-400", text: "text-amber-600" },
-                                { label: "Last 7 Days", value: activeUsers.last_7d, border: "border-b-emerald-400", text: "text-emerald-600" },
-                                { label: "Last 30 Days", value: activeUsers.last_30d, border: "border-b-blue-400", text: "text-blue-600" },
-                              ].map((s) => (
-                                <div key={s.label} className="rounded-[24px] border-b-[4px] border-gray-200 bg-white p-5 shadow-sm" style={{ borderBottomColor: s.border.includes("red") ? "#F87171" : s.border.includes("amber") ? "#FBBF24" : s.border.includes("emerald") ? "#34D399" : "#60A5FA" }}>
-                                  <p className="text-xs font-bold tracking-wide text-gray-500 uppercase">{s.label}</p>
-                                  <p className={`mt-2 font-display text-2xl font-black tracking-tight ${s.text}`}>{s.value}</p>
-                                </div>
-                              ))}
-                            </div>
+                        {/* Error banner */}
+                        {analyticsError && (
+                          <div className="rounded-2xl border-b-[4px] border-red-200 bg-red-50 px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <span className="text-lg">⚠️</span>
+                              <div>
+                                <p className="text-sm font-bold text-red-700">Failed to load analytics</p>
+                                <p className="text-xs text-red-600">{analyticsError}</p>
+                              </div>
+                            </div>                              <button
+                              onClick={loadAnalytics}
+                              className="mt-3 rounded-full border-b-[3px] border-red-200 bg-white px-4 py-1.5 text-xs font-bold text-red-600 transition-all duration-75 active:translate-y-[3px] active:border-b-0 hover:bg-red-50"
+                            >
+                              Retry
+                            </button>
                           </div>
                         )}
 
-                        {revenueTrends.length > 0 && (
-                          <div>
-                            <h2 className="mb-4 text-sm font-bold tracking-wide text-gray-700 uppercase">Revenue Trend (14 Days)</h2>
-                            <div className="rounded-[24px] border border-gray-200 bg-white p-6 shadow-sm">
+                        {/* Active Users — always render, show zeroes when no data */}
+                        <div>
+                          <h2 className="mb-4 text-sm font-bold tracking-wide text-gray-700 uppercase">Active Users</h2>
+                          <div className="grid gap-4 sm:grid-cols-4">
+                            {[
+                              { label: "Last Hour", key: "last_hour" as const, border: "border-b-red-400", text: "text-red-600" },
+                              { label: "Last 24h", key: "last_24h" as const, border: "border-b-amber-400", text: "text-amber-600" },
+                              { label: "Last 7 Days", key: "last_7d" as const, border: "border-b-emerald-400", text: "text-emerald-600" },
+                              { label: "Last 30 Days", key: "last_30d" as const, border: "border-b-blue-400", text: "text-blue-600" },
+                            ].map((s) => {
+                              const value = activeUsers?.[s.key] ?? 0;
+                              return (
+                                <div key={s.label} className="rounded-[24px] border-b-[4px] border-gray-200 bg-white p-5 shadow-sm" style={{ borderBottomColor: s.border.includes("red") ? "#F87171" : s.border.includes("amber") ? "#FBBF24" : s.border.includes("emerald") ? "#34D399" : "#60A5FA" }}>
+                                  <p className="text-xs font-bold tracking-wide text-gray-500 uppercase">{s.label}</p>
+                                  <p className={`mt-2 font-display text-2xl font-black tracking-tight ${s.text}`}>{value}</p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <h2 className="mb-4 text-sm font-bold tracking-wide text-gray-700 uppercase">Revenue Trend (14 Days)</h2>
+                          <div className="rounded-[24px] border border-gray-200 bg-white p-6 shadow-sm">
+                            {revenueTrends.length === 0 ? (
+                              <div className="py-8 text-center">
+                                <p className="text-sm font-bold text-gray-400">No revenue data available yet</p>
+                                <p className="mt-1 text-xs text-gray-400">Data will appear once players start playing games</p>
+                              </div>
+                            ) : (
                               <div className="flex items-end gap-1" style={{ height: 120 }}>
                                 {revenueTrends.map((p, i) => {
                                   const rev = parseFloat(p.revenue);
@@ -724,44 +769,82 @@ export default function AdminPage() {
                                   );
                                 })}
                               </div>
-                            </div>
+                            )}
                           </div>
-                        )}
+                        </div>
 
-                        {gamePop.length > 0 && (
-                          <div>
-                            <h2 className="mb-4 text-sm font-bold tracking-wide text-gray-700 uppercase">Game Popularity (30 Days)</h2>
-                            <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-sm">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="bg-[#4C00C2]/5 text-xs uppercase tracking-wider text-[#4C00C2]">
-                                    <th className="px-5 py-3.5 text-left font-bold">Game</th>
-                                    <th className="px-5 py-3.5 text-right font-bold">Rounds</th>
-                                    <th className="px-5 py-3.5 text-right font-bold">Players</th>
-                                    <th className="px-5 py-3.5 text-right font-bold">Total Bet</th>
-                                    <th className="px-5 py-3.5 text-right font-bold">RTP</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {gamePop.map((g) => (
-                                    <tr key={g.game_type} className="border-t border-gray-100 transition-colors hover:bg-gray-50">
-                                      <td className="px-5 py-3.5 text-left font-bold capitalize text-gray-900">{g.game_type}</td>
-                                      <td className="px-5 py-3.5 text-right text-gray-600">{g.total_rounds}</td>
-                                      <td className="px-5 py-3.5 text-right text-gray-600">{g.unique_players}</td>
-                                      <td className="px-5 py-3.5 text-right font-mono text-gray-800 font-bold">{formatCurrency(g.total_bet)}</td>
-                                      <td className="px-5 py-3.5 text-right font-mono text-gray-800 font-bold">{g.rtp}</td>
+                        <div>
+                          <h2 className="mb-4 text-sm font-bold tracking-wide text-gray-700 uppercase">Game Popularity (30 Days)</h2>
+                          <div className="rounded-[24px] border border-gray-200 bg-white p-6 shadow-sm">
+                            {gamePop.length === 0 ? (
+                              <div className="py-8 text-center">
+                                <p className="text-sm font-bold text-gray-400">No game data available yet</p>
+                                <p className="mt-1 text-xs text-gray-400">Game popularity stats will appear once players start playing</p>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="space-y-3">
+                                {gamePop.map((g) => {
+                                  const maxRounds = Math.max(...gamePop.map((r) => r.total_rounds), 1);
+                                  const pct = Math.max((g.total_rounds / maxRounds) * 100, g.total_rounds > 0 ? 5 : 0);
+                                  return (
+                                    <div key={g.game_type} className="space-y-1">
+                                      <div className="flex items-center justify-between text-xs">
+                                        <span className="font-bold capitalize text-gray-900">{g.game_type}</span>
+                                        <span className="font-mono text-gray-500">{g.total_rounds} rounds • {g.unique_players} players</span>
+                                      </div>
+                                      <div className="relative h-6 w-full overflow-hidden rounded-full bg-gray-100">
+                                        <div
+                                          className="h-full rounded-full bg-gradient-to-r from-[#4C00C2] to-[#7C3AED] transition-all duration-500"
+                                          style={{ width: `${pct}%` }}
+                                        />
+                                        <div className="absolute inset-0 flex items-center px-3">
+                                          <span className="text-[10px] font-bold text-white drop-shadow-sm">{formatCurrency(g.total_bet)}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {/* Table */}
+                              <div className="mt-4 overflow-hidden rounded-[16px] border border-gray-100">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="bg-[#4C00C2]/5 text-xs uppercase tracking-wider text-[#4C00C2]">
+                                      <th className="px-4 py-3 text-left font-bold">Game</th>
+                                      <th className="px-4 py-3 text-right font-bold">Rounds</th>
+                                      <th className="px-4 py-3 text-right font-bold">Players</th>
+                                      <th className="px-4 py-3 text-right font-bold">Total Bet</th>
+                                      <th className="px-4 py-3 text-right font-bold">RTP</th>
                                     </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
+                                  </thead>
+                                  <tbody>
+                                    {gamePop.map((g) => (
+                                      <tr key={g.game_type} className="border-t border-gray-100 transition-colors hover:bg-gray-50">
+                                        <td className="px-4 py-3 text-left font-bold capitalize text-gray-900">{g.game_type}</td>
+                                        <td className="px-4 py-3 text-right text-gray-600">{g.total_rounds}</td>
+                                        <td className="px-4 py-3 text-right text-gray-600">{g.unique_players}</td>
+                                        <td className="px-4 py-3 text-right font-mono text-gray-800 font-bold">{formatCurrency(g.total_bet)}</td>
+                                        <td className="px-4 py-3 text-right font-mono text-gray-800 font-bold">{g.rtp}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </>
+                            )}
                           </div>
-                        )}
+                        </div>
 
-                        {userGrowth.length > 0 && (
-                          <div>
-                            <h2 className="mb-4 text-sm font-bold tracking-wide text-gray-700 uppercase">User Registrations (14 Days)</h2>
-                            <div className="rounded-[24px] border border-gray-200 bg-white p-6 shadow-sm">
+                        <div>
+                          <h2 className="mb-4 text-sm font-bold tracking-wide text-gray-700 uppercase">User Registrations (14 Days)</h2>
+                          <div className="rounded-[24px] border border-gray-200 bg-white p-6 shadow-sm">
+                            {userGrowth.length === 0 ? (
+                              <div className="py-8 text-center">
+                                <p className="text-sm font-bold text-gray-400">No registration data yet</p>
+                                <p className="mt-1 text-xs text-gray-400">User registration trends will appear once users start signing up</p>
+                              </div>
+                            ) : (
                               <div className="flex items-end gap-1" style={{ height: 80 }}>
                                 {userGrowth.map((p, i) => {
                                   const maxReg = Math.max(...userGrowth.map((r) => r.registrations), 1);
@@ -775,9 +858,9 @@ export default function AdminPage() {
                                   );
                                 })}
                               </div>
-                            </div>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </>
                     )}
                   </>
@@ -796,6 +879,16 @@ export default function AdminPage() {
                       </div>
                       <button onClick={searchUsers}
                         className="rounded-full border-b-[4px] border-[#3d009e] bg-[#4C00C2] px-6 py-3 text-sm font-bold text-white shadow-sm transition-all duration-75 active:translate-y-[4px] active:border-b-0">Search</button>
+                      <button onClick={() => exportCsv(users, [
+                        { key: "username", label: "Username" }, { key: "email", label: "Email" },
+                        { key: "wallet_balance", label: "Balance" }, { key: "wallet_locked", label: "Locked" },
+                        { key: "is_active", label: "Active" }, { key: "game_count", label: "Games" },
+                        { key: "transaction_count", label: "Transactions" }, { key: "created_at", label: "Joined" },
+                      ], `users-${new Date().toISOString().slice(0, 10)}.csv`)}
+                        className="rounded-full border-b-[3px] border-gray-200 bg-gray-50 px-4 py-3 text-xs font-bold text-gray-500 transition-all duration-75 active:translate-y-[3px] active:border-b-0 hover:bg-gray-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block mr-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        CSV
+                      </button>
                     </div>
                     <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-sm">
                       <table className="w-full text-sm">
@@ -873,6 +966,18 @@ export default function AdminPage() {
                           className="text-xs font-bold text-gray-500 transition-colors hover:text-gray-700">Clear</button>
                       </div>
                     )}
+                    <div className="mb-4 flex justify-end">
+                      <button onClick={() => exportCsv(txs, [
+                        { key: "user_username", label: "User" }, { key: "user_email", label: "Email" },
+                        { key: "type", label: "Type" }, { key: "status", label: "Status" },
+                        { key: "amount", label: "Amount" }, { key: "description", label: "Description" },
+                        { key: "created_at", label: "Date" },
+                      ], `transactions-${new Date().toISOString().slice(0, 10)}.csv`)}
+                        className="rounded-full border-b-[3px] border-gray-200 bg-gray-50 px-4 py-2 text-xs font-bold text-gray-500 transition-all duration-75 active:translate-y-[3px] active:border-b-0 hover:bg-gray-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block mr-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export CSV
+                      </button>
+                    </div>
                     <div className="overflow-hidden rounded-[24px] border border-gray-200 bg-white shadow-sm">
                       <table className="w-full text-sm">
                         <thead>
@@ -1055,6 +1160,8 @@ export default function AdminPage() {
 
                 {/* ── Admin Roles ──────────────────────── */}
                 {tab === "roles" && <AdminRolesPanel />}
+                {tab === "notify" && <AdminNotifyPanel />}
+                {tab === "fairness" && <FairnessPanel />}
               </motion.div>
             )}
           </div>

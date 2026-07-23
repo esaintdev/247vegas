@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import apiClient from "@/api/client";
+import { useAuthStore } from "@/store/authStore";
 
 interface Transaction {
   id: string; type: string; status: string; amount: string;
@@ -17,6 +18,7 @@ interface UserDetail {
   id: string; email: string; username: string; display_name: string;
   is_active: boolean; is_verified: boolean; is_admin: boolean;
   created_at: string; updated_at: string;
+  last_login_at: string | null; last_login_ip: string | null;
   wallet_balance: string; wallet_locked: string; wallet_bonus: string;
   wallet_currency: string; wallet_is_active: boolean;
   total_deposits: string; total_withdrawals: string;
@@ -29,6 +31,8 @@ interface UserDetail {
 export default function AdminUserPage() {
   const { userId } = useParams();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuthStore();
+  const isSelf = currentUser?.id === userId;
   const [user, setUser] = useState<UserDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"transactions" | "games">("transactions");
@@ -76,6 +80,19 @@ export default function AdminUserPage() {
       setMsg({ type: "success", text: user.wallet_is_active ? "Wallet frozen" : "Wallet unfrozen" });
     } catch {
       setMsg({ type: "error", text: "Failed to toggle wallet freeze" });
+    }
+  };
+
+  const handleToggleActive = async () => {
+    if (!user) return;
+    setMsg(null);
+    try {
+      const { data } = await apiClient.post(`/admin/users/${userId}/toggle-active`);
+      const res = await apiClient.get<UserDetail>(`/admin/users/${userId}/detail`);
+      setUser(res.data);
+      setMsg({ type: "success", text: data.is_active ? "User reactivated" : "User suspended" });
+    } catch {
+      setMsg({ type: "error", text: "Failed to toggle user status" });
     }
   };
 
@@ -208,11 +225,45 @@ export default function AdminUserPage() {
               </div>
             </div>
 
+            {/* Account Info */}
             <div className="rounded-[24px] border border-gray-200 bg-white p-6 shadow-[0_8px_30px_rgb(0,0,0,0.08)]">
-              <h2 className="mb-4 text-xs font-bold tracking-wide text-gray-600 uppercase">Account</h2>
-              <div className="space-y-2 text-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xs font-bold tracking-wide text-gray-600 uppercase">Account</h2>
+                {isSelf ? (
+                  <span className="rounded-full border-b-[3px] border-gray-200 bg-gray-100 px-4 py-1.5 text-xs font-bold text-gray-400 cursor-not-allowed" title="You cannot suspend your own account">
+                    Cannot self-suspend
+                  </span>
+                ) : (
+                  <button onClick={handleToggleActive}
+                    className={`rounded-full border-b-[3px] px-4 py-1.5 text-xs font-bold transition-all duration-75 active:translate-y-[3px] active:border-b-0 ${
+                      user.is_active
+                        ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                    }`}>{user.is_active ? "Suspend" : "Reactivate"}</button>
+                )}
+              </div>
+              <div className="space-y-3 text-sm">
                 <div className="flex justify-between"><span className="font-bold text-gray-500">Joined</span><span className="font-bold text-gray-900">{new Date(user.created_at).toLocaleDateString()}</span></div>
                 <div className="flex justify-between"><span className="font-bold text-gray-500">Last Updated</span><span className="font-bold text-gray-900">{new Date(user.updated_at).toLocaleDateString()}</span></div>
+                <div className="border-t border-gray-100 pt-3">
+                  <p className="mb-2 text-xs font-bold tracking-wide text-gray-600 uppercase">Login History</p>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="font-bold text-gray-500">Last Login</span>
+                      <span className="font-bold text-gray-900">
+                        {user.last_login_at
+                          ? new Date(user.last_login_at).toLocaleString()
+                          : "Never"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-bold text-gray-500">Last IP</span>
+                      <span className="font-mono text-xs font-bold text-gray-900">
+                        {user.last_login_ip || "—"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

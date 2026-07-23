@@ -5,7 +5,9 @@ from __future__ import annotations
 import enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Enum, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Enum, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, new_uuid
@@ -29,7 +31,7 @@ PERMISSIONS: dict[str, list[str]] = {
         "read:bonuses", "write:bonuses",
         "wallet:adjust", "wallet:freeze",
         "read:audit", "admin:roles",
-        "gamecontrol:kill",
+        "gamecontrol:kill", "write:notifications", "fairness:read",
     ],
     "manager": [
         "read:stats", "read:users", "write:users",
@@ -38,7 +40,7 @@ PERMISSIONS: dict[str, list[str]] = {
         "read:kyc", "write:kyc",
         "read:settings",
         "read:bonuses", "write:bonuses",
-        "read:audit",
+        "read:audit", "write:notifications", "fairness:read",
     ],
     "support": [
         "read:users",
@@ -85,6 +87,12 @@ class User(Base, TimestampMixin):
     )
     admin_role: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True, default=None
+    )
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    last_login_ip: Mapped[Optional[str]] = mapped_column(
+        String(45), nullable=True, default=None
     )
 
     # Relationships

@@ -52,6 +52,8 @@ class UserResponse(BaseModel):
     admin_role: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    last_login_at: Optional[datetime] = None
+    last_login_ip: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

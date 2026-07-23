@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,7 +71,11 @@ async def register(payload: UserCreate, session: AsyncSession = Depends(get_sess
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: UserLogin, session: AsyncSession = Depends(get_session)):
+async def login(
+    payload: UserLogin,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
     """Authenticate a user and return JWT tokens."""
 
     result = await session.execute(select(User).where(User.email == payload.email))
@@ -86,6 +92,10 @@ async def login(payload: UserLogin, session: AsyncSession = Depends(get_session)
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account deactivated",
         )
+
+    # Record login
+    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_ip = request.client.host if request.client else None
 
     access_token = create_access_token(data={"sub": user.id})
     refresh_token = create_refresh_token(data={"sub": user.id})

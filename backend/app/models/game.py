@@ -95,9 +95,19 @@ class GameRound(Base, TimestampMixin):
     outcome_data: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )  # JSON: cards dealt, slot positions, etc.
+    # Provably fair seed fields
     seed_hash: Mapped[Optional[str]] = mapped_column(
         String(128), nullable=True
-    )  # Provably fair seed hash
+    )  # SHA-256 commitment hash
+    server_seed: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True
+    )  # Revealed after round completes
+    client_seed: Mapped[Optional[str]] = mapped_column(
+        String(128), nullable=True, default=None
+    )  # Optional player-provided seed
+    nonce: Mapped[int] = mapped_column(
+        default=0, nullable=False
+    )  # Incrementing nonce
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     def __repr__(self) -> str:

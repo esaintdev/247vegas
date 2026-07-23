@@ -209,6 +209,8 @@ async def issue_bonus(
     session: AsyncSession = Depends(get_session),
 ):
     """Manually issue a bonus to a user — credits their wallet immediately."""
+    if payload.user_id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot issue a bonus to yourself")
     # Verify user exists
     user_result = await session.execute(select(User).where(User.id == payload.user_id))
     user = user_result.scalar_one_or_none()
